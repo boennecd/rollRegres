@@ -1,0 +1,167 @@
+---
+title: "Vignette Title"
+author: "Vignette Author"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+https://stackoverflow.com/questions/27634992/recursive-regression-in-r/48852401#48852401
+https://stackoverflow.com/questions/9351066/applying-a-rolling-window-regression-to-an-xts-series-in-r/48857530#48857530
+https://stackoverflow.com/questions/5652058/parallelize-a-rolling-window-regression-in-r/48857396#48857396
+https://stackoverflow.com/questions/38018487/efficient-way-to-create-recursive-out-of-sample-estimates-in-order-to-calculate/48852627#48852627
+
+# Rolling regressions
+
+```{r def_roll_funcs, echo = FALSE}
+#####
+# Pure R version of package function
+library(SamplerCompare) # for LINPACK `chdd` and `chud`
+roll_regress_R <- function(X, y, width){
+  n <- nrow(X)
+  p <- ncol(X)
+  out <- matrix(NA_real_, p, n)
+
+  is_first <- TRUE
+  for(i in width:n){
+    if(is_first){
+      is_first <- FALSE
+      qr. <- qr(X[1:width, ])
+      R <- qr.R(qr.)
+
+      # Use X^T for the rest
+      X <- t(X)
+
+      XtY <- drop(tcrossprod(y[1:width], X[, 1:width]))
+    } else {
+      x_new <- X[, i]
+      x_old <- X[, i - width]
+
+      # update R 
+      R <- .Fortran(
+        "dchud", R, p, p, x_new, 0., 0L, 0L, 
+        0., 0., numeric(p), numeric(p), 
+        PACKAGE = "SamplerCompare")[[1]]
+
+      # downdate R
+      R <- .Fortran(
+        "dchdd", R, p, p, x_old, 0., 0L, 0L, 
+        0., 0., numeric(p), numeric(p), integer(1),
+        PACKAGE = "SamplerCompare")[[1]]
+
+      # update XtY
+      XtY <- XtY + y[i] * x_new - y[i - width] * x_old
+    }
+
+    coef. <- .Internal(backsolve(R, XtY, p, TRUE, TRUE))
+    coef. <- .Internal(backsolve(R, coef., p, TRUE, FALSE))
+
+    out[, i] <- coef.
+  }
+
+  t(out)
+}
+
+#####
+# simple R version
+roll_regress_R_for_loop <- function(X, y, width){
+  n <- nrow(X)
+  p <- ncol(X)
+  out <- matrix(NA_real_, n, p)
+
+  for(i in width:n){
+    idx <- (i - width + 1L):i
+    out[i, ] <- lm.fit(X[idx, , drop = FALSE], y[idx])$coefficients
+  }
+
+  out
+}
+
+#####
+# zoo version
+.zoo_inner <- function(Z) {
+  fit <- lm.fit(Z[, -1, drop = FALSE], Z[, 1])
+  fit$coefficients
+}
+library(zoo)
+roll_regress_zoo <- function(x, y, width){
+  Z <- cbind(y, X)
+  rollapply(Z, width, FUN = .zoo_inner,  
+            by.column = FALSE,  align = "right", fill = NA_real_)
+}
+
+#####
+# roll lm
+library(roll)
+roll_lm_func <- function(x, y ,width)
+  roll_lm(X, matrix(y, ncol = 1), wdth, intercept = FALSE)$coefficients[, -1L]
+
+# use one thread as other methods are easily to compute in parallel too
+RcppParallel::setThreadOptions(numThreads = 1) 
+
+# compile functions
+library(compiler)
+roll_regress_R          <- cmpfun(roll_regress_R)
+roll_regress_R_for_loop <- cmpfun(roll_regress_R_for_loop)
+.zoo_inner              <- cmpfun(.zoo_inner)
+roll_regress_zoo        <- cmpfun(roll_regress_zoo)
+roll_lm_func            <- cmpfun(roll_lm_func)
+```
+
+Simulate data
+
+```{r sim_data}
+set.seed(101)
+n <- 10000
+p <- 6
+wdth = 50
+X <- matrix(rnorm(p * n), n, p)
+y <- drop(X %*% runif(p)) + rnorm(n)
+```
+
+Check that functions give the same
+
+```{r roll_gives_same}
+all.equal(roll_regress_R(X, y, wdth), roll_regress_zoo(X, y, wdth), 
+          check.attributes = FALSE)
+all.equal(roll_regress_R(X, y, wdth), roll_regress_R_for_loop(X, y, wdth), 
+          check.attributes = FALSE)
+all.equal(roll_regress_R(X, y, wdth), roll_lm_func(X, y, wdth), 
+          check.attributes = FALSE)
+```
+
+Benchmark
+
+```{r benchmark_roll}
+microbenchmark::microbenchmark(
+  roll_regress_R = roll_regress_R(X, y, wdth),
+  roll_regress_zoo = roll_regress_zoo(X, y, wdth),
+  roll_regress_R_for_loop = roll_regress_R_for_loop(X, y, wdth),
+  roll_lm = roll_lm_func(X, y, wdth),
+  times = 5)
+```
+
+# Session info
+
+```{r}
+sessionInfo()
+```
+
+# Function definitions
+
+TODO: insert.
+
+
+
+
+
