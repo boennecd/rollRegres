@@ -4,7 +4,7 @@
       double precision rho(nz),c(p)
 c
 c     By B. Christoffersen. I downloaded the files from www.netlib.org/linpack.
-c     for some reason all the dimension where 1 instead of nz or p.
+c     to pass bounds checks.
 c
 c     dchdd downdates an augmented cholesky decomposition or the
 c     triangular factor of an augmented qr decomposition.

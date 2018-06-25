@@ -3,8 +3,7 @@
 
 #' @import Rcpp
 #' @useDynLib rollRegres, .registration = TRUE
-#' @export
-roll_cpp <- function(Y, X, window) {
-    .Call(`_rollRegres_roll_cpp`, Y, X, window)
+roll_cpp <- function(X, Y, window) {
+    .Call(`_rollRegres_roll_cpp`, X, Y, window)
 }
 

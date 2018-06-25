@@ -7,15 +7,15 @@
 using namespace Rcpp;
 
 // roll_cpp
-Rcpp::NumericMatrix roll_cpp(const arma::vec& Y, const arma::mat& X, int window);
-RcppExport SEXP _rollRegres_roll_cpp(SEXP YSEXP, SEXP XSEXP, SEXP windowSEXP) {
+arma::mat roll_cpp(const arma::mat& X, const arma::vec& Y, int window);
+RcppExport SEXP _rollRegres_roll_cpp(SEXP XSEXP, SEXP YSEXP, SEXP windowSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
     Rcpp::traits::input_parameter< int >::type window(windowSEXP);
-    rcpp_result_gen = Rcpp::wrap(roll_cpp(Y, X, window));
+    rcpp_result_gen = Rcpp::wrap(roll_cpp(X, Y, window));
     return rcpp_result_gen;
 END_RCPP
 }

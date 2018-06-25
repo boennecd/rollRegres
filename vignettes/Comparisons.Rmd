@@ -1,29 +1,28 @@
 ---
-title: "Vignette Title"
-author: "Vignette Author"
+title: "Comparisons of computation time"
+author: "Benjamin Christoffersen"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteIndexEntry{Comparisons of computation time}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
+options(width = 80)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#R>")
 ```
-
-https://stackoverflow.com/questions/27634992/recursive-regression-in-r/48852401#48852401
-https://stackoverflow.com/questions/9351066/applying-a-rolling-window-regression-to-an-xts-series-in-r/48857530#48857530
-https://stackoverflow.com/questions/5652058/parallelize-a-rolling-window-regression-in-r/48857396#48857396
-https://stackoverflow.com/questions/38018487/efficient-way-to-create-recursive-out-of-sample-estimates-in-order-to-calculate/48852627#48852627
 
 # Rolling regressions
 
-```{r def_roll_funcs, echo = FALSE}
+This vignette shows comparisons in terms of computation with other packages and 
+alternative `base` R solutions. Specifially, we will make comparissons with the 
+`roll` package and `zoo` package. It should be stressed though that the other 
+solutions do additional things than this package does. E.g., there is not 
+performed any rank test in the function in this package.
+
+```{r def_roll_funcs, echo = FALSE, message=FALSE}
 #####
 # Pure R version of package function
 library(SamplerCompare) # for LINPACK `chdd` and `chud`
@@ -107,7 +106,7 @@ roll_lm_func <- function(x, y ,width)
   roll_lm(X, matrix(y, ncol = 1), wdth, intercept = FALSE)$coefficients[, -1L]
 
 # use one thread as other methods are easily to compute in parallel too
-RcppParallel::setThreadOptions(numThreads = 1) 
+RcppParallel::setThreadOptions(numThreads = 1)
 
 # compile functions
 library(compiler)
@@ -118,7 +117,7 @@ roll_regress_zoo        <- cmpfun(roll_regress_zoo)
 roll_lm_func            <- cmpfun(roll_lm_func)
 ```
 
-Simulate data
+We start by Simulating the data
 
 ```{r sim_data}
 set.seed(101)
@@ -127,11 +126,20 @@ p <- 6
 wdth = 50
 X <- matrix(rnorm(p * n), n, p)
 y <- drop(X %*% runif(p)) + rnorm(n)
+df <- data.frame(y, X)
+frm <- eval(parse(text = paste0(
+  "formula(y ~ -1 + ", paste0("X", 1:p, collapse = " + "), ")")))
 ```
 
-Check that functions give the same
+Then we check that the functions give the same (the function definitions are at
+the end of this document)
 
 ```{r roll_gives_same}
+library(rollRegres)
+all.equal(roll_regress_R(X, y, wdth), roll_regres.fit(X, y, wdth), 
+          check.attributes = FALSE)
+all.equal(roll_regress_R(X, y, wdth), roll_regres(frm, df, wdth), 
+          check.attributes = FALSE)
 all.equal(roll_regress_R(X, y, wdth), roll_regress_zoo(X, y, wdth), 
           check.attributes = FALSE)
 all.equal(roll_regress_R(X, y, wdth), roll_regress_R_for_loop(X, y, wdth), 
@@ -140,12 +148,15 @@ all.equal(roll_regress_R(X, y, wdth), roll_lm_func(X, y, wdth),
           check.attributes = FALSE)
 ```
 
-Benchmark
+and here then we compare the computation time
 
 ```{r benchmark_roll}
 microbenchmark::microbenchmark(
-  roll_regress_R = roll_regress_R(X, y, wdth),
-  roll_regress_zoo = roll_regress_zoo(X, y, wdth),
+  roll_regress            = roll_regres.fit(X, y, wdth),
+  # this will be slower due to call to `model.matrix` and `model.frame`
+  roll_regress_df         = roll_regres(frm, df, wdth),
+  roll_regress_R          = roll_regress_R(X, y, wdth),
+  roll_regress_zoo        = roll_regress_zoo(X, y, wdth),
   roll_regress_R_for_loop = roll_regress_R_for_loop(X, y, wdth),
   roll_lm = roll_lm_func(X, y, wdth),
   times = 5)
@@ -153,15 +164,13 @@ microbenchmark::microbenchmark(
 
 # Session info
 
-```{r}
+```{r ses_info}
 sessionInfo()
 ```
 
 # Function definitions
 
-TODO: insert.
+Here are the function definitions
 
-
-
-
-
+```{r def_roll_funcs, eval = FALSE}
+```
