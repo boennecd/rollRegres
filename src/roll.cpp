@@ -1,5 +1,17 @@
-#include <R_ext/Linpack.h>
+#include "R_ext/RS.h" /* for e.g., `F77_CALL` macro */
 #include "RcppArmadillo.h"
+#include "BLAS_LINPACK.h"
+#include <memory>
+
+extern "C" {
+  void F77_NAME(dchud)(
+      double*, int*, int*, double*, double*, int*, int*, double*, double*,
+      double*, double*);
+
+  void F77_NAME(dchdd)(
+      double*, int*, int*, double*, double*, int*, int*, double*, double*,
+      double*, double*, int*);
+}
 
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
@@ -15,15 +27,14 @@ arma::mat roll_cpp(const arma::mat &X, const arma::vec &Y, int window){
 
   // compute coefs
   bool is_first = true;
-  double d_one = 1;
-  int i_one = 1L;
-  int i_zero = 0L;
-  int    jpvt [p];
-  double qraux[p];
-  double X_qr [window * p];
-  double XtY  [p];
-  double c    [p];
-  double dum  [window];
+  double d_one = 1, ddum;
+  int i_one = 1L, i_zero = 0L;
+  std::unique_ptr<int    []> jpvt (new int[p]            );
+  std::unique_ptr<double []> qraux(new double[p]         );
+  std::unique_ptr<double []> X_qr (new double[window * p]);
+  std::unique_ptr<double []> XtY  (new double[p]         );
+  std::unique_ptr<double []> c    (new double[p]         );
+  std::unique_ptr<double []> s    (new double[p]         );
   double *X_T_begin = X_T.begin();
 
   for(int i = 0; i < p; ++i){
@@ -50,8 +61,7 @@ arma::mat roll_cpp(const arma::mat &X, const arma::vec &Y, int window){
        * We use `dqrdc` instead where we can select not to perform pivoting.
        * NOTICE: no rank check
        */
-      F77_CALL(dqrdc)(
-          &X_qr[0], &window, &window, &p, &qraux[0], &jpvt[0], &work, &job);
+      dqrdc(&X_qr[0], &window, &window, &p, &qraux[0], &jpvt[0], &work, &job);
 
     } else {
       // update R
@@ -59,12 +69,12 @@ arma::mat roll_cpp(const arma::mat &X, const arma::vec &Y, int window){
 
       F77_CALL(dchud)(
           &X_qr[0], &window, &p, X_T_begin + inc_new,
-          &dum[0], &i_zero, &i_zero, &dum[0], &dum[0], &c[0], &dum[0]);
+          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
 
       int info;
       F77_CALL(dchdd)(
           &X_qr[0], &window, &p, X_T_begin + inc_old,
-          &dum[0], &i_zero, &i_zero, &dum[0], &dum[0], &c[0], &dum[0], &info);
+          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
 
       if(info != 0)
         Rcpp::stop("'dchdd' failed");
@@ -86,14 +96,23 @@ arma::mat roll_cpp(const arma::mat &X, const arma::vec &Y, int window){
      * then compute
      *       R Z = X
      */
-    F77_CALL(dtrsm)(
+    dtrsm(
         "L", "U", "T", "N", &p_cnst, &i_one /* Y has one column */, &d_one,
         &X_qr[0], &window /* LDA */,
         out.begin() + i * p, &p_cnst);
-    F77_CALL(dtrsm)(
+    dtrsm(
         "L", "U", "N" /*  only difference */, "N", &p_cnst, &i_one, &d_one,
         &X_qr[0], &window,
         out.begin() + i * p, &p_cnst);
+
+    /* norm = 0;
+    for(int k = i - (window - 1L); k <= i; ++k){
+      double res = Y[k];
+      for(int j = 0; j < p; ++j)
+        res -= out[i * p + j] * X_T[k * p + j];
+      norm += res * res;
+    }
+    norm = 1000; /* norm = std::sqrt(norm); */
   }
 
   return out.t();
