@@ -5,13 +5,21 @@ test_that("`roll_cpp` works w/o missing values", {
     n <- nrow(X)
     p <- ncol(X)
     out <- matrix(NA_real_, n, p)
+    sigmas    <- rep(NA_real_, n)
+    r.squared <- rep(NA_real_, n)
 
     for(i in width:n){
       idx <- (i - width + 1L):i
-      out[i, ] <- lm.fit(X[idx, , drop = FALSE], y[idx])$coefficients
+      fit <- lm(y[idx] ~ -1 + X[idx, , drop = FALSE])
+      out[i, ] <- fit$coefficients
+      su <- summary(fit)
+      sigmas[i] <- su$sigma
+      ss1 <- sum((y[idx] - mean(y[idx]))^2)
+      ss2 <- sum(fit$residuals^2)
+      r.squared[i] <- 1 - ss2 / ss1
     }
 
-    out
+    list(coef = out, sigmas = sigmas, r.squared = r.squared)
   }
 
   # set.seed(101)
@@ -73,6 +81,29 @@ test_that("`roll_cpp` works w/o missing values", {
      1.373, -0.834, -0.656)
   wdth = 40
 
-  expect_equal(
-    roll_regress_R_for_loop(X, y, wdth), roll_cpp(Y = y, X = X, window = wdth))
+  r_out <- roll_regress_R_for_loop(X, y, wdth)
+
+  . <- function(do_compute_R_sqs, do_compute_sigmas)
+    substitute({
+      cpp_out <- roll_cpp(Y = y, X = X, window = wdth,
+               do_compute_R_sqs = do_compute_R_sqs,
+               do_compute_sigmas = do_compute_sigmas)
+      expect_equal(r_out$coef, cpp_out$coefs)
+      t1
+      t2
+    }, list(
+      t1 = if(do_compute_sigmas)
+        quote(expect_equal(r_out$sigmas, drop(cpp_out$sigmas))) else
+           quote(expect_null(cpp_out$sigmas)),
+      t2 = if(do_compute_R_sqs)
+        quote(expect_equal(r_out$r.squared, drop(cpp_out$r.squareds))) else
+          quote(expect_null(cpp_out$r.squareds)),
+      do_compute_R_sqs = do_compute_R_sqs,
+      do_compute_sigmas = do_compute_sigmas
+    ))
+
+  eval(.(do_compute_R_sqs = FALSE, do_compute_sigmas = FALSE))
+  eval(.(do_compute_R_sqs = TRUE , do_compute_sigmas = FALSE))
+  eval(.(do_compute_R_sqs = FALSE, do_compute_sigmas = TRUE ))
+  eval(.(do_compute_R_sqs = TRUE , do_compute_sigmas = TRUE ))
 })

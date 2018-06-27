@@ -3,7 +3,8 @@
 #' estimated over a moving window of data. The function assumes that
 #' @importFrom stats model.frame na.fail
 #' @export
-roll_regres <- function(formula, data, width, contrasts = NULL){
+roll_regres <- function(
+  formula, data, width, contrasts = NULL, do_compute = character()){
   # get model matrix and response
   cl <- match.call()
   mf <- match.call(expand.dots = FALSE)
@@ -21,7 +22,7 @@ roll_regres <- function(formula, data, width, contrasts = NULL){
   assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
 
   # find results
-  out <- roll_regres.fit(x = x, y = y, width = width)
+  out <- roll_regres.fit(x = x, y = y, width = width, do_compute = do_compute)
 
   # add contrasts as an attribuate
   attr(out, "terms") <- attr(x, "contrasts")
@@ -37,14 +38,33 @@ roll_regres <- function(formula, data, width, contrasts = NULL){
 #'
 #' @seealso \code{\link{roll_regres}} for method similar to \code{\link{lm}}.
 #'
-#' @importFrom checkmate assert_int assert_matrix assert_numeric
+#' @importFrom checkmate assert_int assert_matrix assert_numeric assert_character
 #' @export
-roll_regres.fit <- function(x, y, width){
+roll_regres.fit <- function(x, y, width, do_compute = character()){
   assert_matrix(x, any.missing = FALSE)
   assert_numeric(y, finite = TRUE, any.missing = FALSE, len = nrow(x))
   assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
+  assert_character(do_compute, any.missing = FALSE)
+  if(!all(do_compute %in% c("sigmas", "r.squareds")))
+    stop(sQuote(do_compute), " contains elements which are not implemented")
 
-  out <- roll_cpp(Y = y, X = x, window = width)
-  dimnames(out) <- dimnames(x)
+  do_compute_sigmas  <- "sigmas"     %in% do_compute
+  do_compute_R_sqs   <- "r.squareds" %in% do_compute
+
+  out <- roll_cpp(
+    Y = y, X = x, window = width, do_compute_R_sqs = do_compute_R_sqs,
+    do_compute_sigmas = do_compute_sigmas)
+
+  # set dimnames
+  dimnames(out$coefs) <- dimnames(x)
+  if(do_compute_R_sqs){
+    out$r.squareds <- drop(out$r.squareds)
+    names(out$r.squareds) <- rownames(x)
+  }
+  if(do_compute_sigmas){
+    out$sigmas <- drop(out$sigmas)
+    names(out$sigmas) <- rownames(x)
+  }
+
   out
 }

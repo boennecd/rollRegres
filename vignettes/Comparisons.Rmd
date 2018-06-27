@@ -14,13 +14,16 @@ options(width = 80)
 knitr::opts_chunk$set(collapse = TRUE, comment = "#R>")
 ```
 
-# Rolling regressions
+# TODO: motivate and show features
 
 This vignette shows comparisons in terms of computation with other packages and 
 alternative `base` R solutions. Specifially, we will make comparissons with the 
 `roll` package and `zoo` package. It should be stressed though that the other 
 solutions do additional things than this package does. E.g., there is not 
-performed any rank test in the function in this package.
+performed any rank test in the function in this package. We start by showing 
+the basic features of the package...
+
+# Comparisons
 
 ```{r def_roll_funcs, echo = FALSE, message=FALSE}
 #####
