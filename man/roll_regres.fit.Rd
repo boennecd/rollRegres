@@ -10,9 +10,44 @@ roll_regres.fit(x, y, width, do_compute = character())
 \item{x}{design matrix of dimension \code{n * p}.}
 
 \item{y}{numeric vector of observations of length \code{n}.}
+
+\item{width}{intger with the width of the moving window.}
+
+\item{do_compute}{character vector with elements \code{"sigmas"},
+\code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
+to be computed. See "Details".}
+}
+\value{
+Same as \code{\link{roll_regres}}.
 }
 \description{
 Function with a few validation before calling C++ code.
+}
+\details{
+First, the \code{dqrdc} from LINPACK is used to form the QR decomposition
+for the first window of data using Householder transformations without
+pivoting. Then, the LINPACK \code{dchud} and \code{dchdd} methdos are used
+to update and downdate the cholesky decomposition (the R matrix in the QR
+decomposition).
+
+Notice that unlike \code{lm}, there are no checks of the rank of the matrix.
+}
+\examples{
+# simulate data
+set.seed(9623556)
+n <- 50
+p <- 2
+X <- cbind(1, matrix(rnorm(p * n), ncol = p))
+y <- drop(X \%*\% c(1, -1, 1)) + rnorm(n)
+
+# compute coefs
+out <- roll_regres.fit(x = X, y = y, width = 45L)
+tail(out$coefs)
+
+}
+\references{
+Golub, G. H., & Van Loan, C. F. (2013). Matrix computations (4rd ed.).
+JHU Press. See chapter 5 and section 6.5.
 }
 \seealso{
 \code{\link{roll_regres}} for method similar to \code{\link{lm}}.

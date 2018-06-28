@@ -7,7 +7,55 @@
 roll_regres(formula, data, width, contrasts = NULL,
   do_compute = character())
 }
+\arguments{
+\item{formula}{as \code{formula} as in \code{\link{lm}}.}
+
+\item{data}{an optional \code{data.frame} containing the variables in the model.}
+
+\item{width}{intger with the width of the moving window.}
+
+\item{contrasts}{list passed to \code{\link{model.matrix.default}}.}
+
+\item{do_compute}{character vector with elements \code{"sigmas"},
+\code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
+to be computed. See "Details".}
+}
+\value{
+List with vector and matrices with the computed output. See the
+\code{do_compute} argument.
+}
 \description{
 Method for fast rolling regression models. I.e., linear models
-estimated over a moving window of data. The function assumes that
+estimated over a moving window of data. The function assumes that data is
+orded.
+}
+\details{
+The additional output is \code{"sigmas"} for the estimated standard
+deviation of the residuals, \code{"r.squareds"} for the \eqn{R^2} of the
+models, and \code{"1_step_forecasts"} for the out-of-sample forecast for the
+next periods value.
+}
+\examples{
+# simulate data
+set.seed(29132867)
+n <- 50
+p <- 2
+X <- cbind(1, matrix(rnorm(p * n), ncol = p))
+y <- drop(X \%*\% c(1, -1, 1)) + rnorm(n)
+df <- data.frame(y, X[, -1])
+
+# compute coefs
+out <- roll_regres(y ~ X1 + X2, df, width = 45L)
+tail(out$coefs)
+
+# compute more output
+out <- roll_regres(
+ y ~ X1 + X2, df, width = 45L,
+ do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
+lapply(out, tail)
+
+}
+\seealso{
+\code{\link{roll_regres.fit}} for method that avoids the call to
+e.g., \code{\link{model.frame}}.
 }

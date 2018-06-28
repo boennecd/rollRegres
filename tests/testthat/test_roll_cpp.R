@@ -5,21 +5,30 @@ test_that("`roll_cpp` works w/o missing values", {
     n <- nrow(X)
     p <- ncol(X)
     out <- matrix(NA_real_, n, p)
-    sigmas    <- rep(NA_real_, n)
-    r.squared <- rep(NA_real_, n)
+    sigmas             <- rep(NA_real_, n)
+    r.squared          <- rep(NA_real_, n)
+    one_step_forecasts <- rep(NA_real_, n)
 
     for(i in width:n){
       idx <- (i - width + 1L):i
       fit <- lm(y[idx] ~ -1 + X[idx, , drop = FALSE])
       out[i, ] <- fit$coefficients
+
       su <- summary(fit)
       sigmas[i] <- su$sigma
+
       ss1 <- sum((y[idx] - mean(y[idx]))^2)
       ss2 <- sum(fit$residuals^2)
       r.squared[i] <- 1 - ss2 / ss1
+
+      if(i < n){
+        next_i <- i + 1L
+        one_step_forecasts[next_i] <- fit$coefficients %*% X[next_i, ]
+      }
     }
 
-    list(coef = out, sigmas = sigmas, r.squared = r.squared)
+    list(coef = out, sigmas = sigmas, r.squared = r.squared,
+         one_step_forecasts = one_step_forecasts)
   }
 
   # set.seed(101)
@@ -83,14 +92,16 @@ test_that("`roll_cpp` works w/o missing values", {
 
   r_out <- roll_regress_R_for_loop(X, y, wdth)
 
-  . <- function(do_compute_R_sqs, do_compute_sigmas)
+  . <- function(do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts)
     substitute({
       cpp_out <- roll_cpp(Y = y, X = X, window = wdth,
                do_compute_R_sqs = do_compute_R_sqs,
-               do_compute_sigmas = do_compute_sigmas)
+               do_compute_sigmas = do_compute_sigmas,
+               do_1_step_forecasts = do_1_step_forecasts)
       expect_equal(r_out$coef, cpp_out$coefs)
       t1
       t2
+      t3
     }, list(
       t1 = if(do_compute_sigmas)
         quote(expect_equal(r_out$sigmas, drop(cpp_out$sigmas))) else
@@ -98,12 +109,19 @@ test_that("`roll_cpp` works w/o missing values", {
       t2 = if(do_compute_R_sqs)
         quote(expect_equal(r_out$r.squared, drop(cpp_out$r.squareds))) else
           quote(expect_null(cpp_out$r.squareds)),
+      t3 = if(do_1_step_forecasts)
+        quote(expect_equal(
+          r_out$one_step_forecasts, drop(cpp_out$one_step_forecasts))) else
+            quote(expect_null(cpp_out$one_step_forecasts)),
       do_compute_R_sqs = do_compute_R_sqs,
-      do_compute_sigmas = do_compute_sigmas
+      do_compute_sigmas = do_compute_sigmas,
+      do_1_step_forecasts = do_1_step_forecasts
     ))
 
-  eval(.(do_compute_R_sqs = FALSE, do_compute_sigmas = FALSE))
-  eval(.(do_compute_R_sqs = TRUE , do_compute_sigmas = FALSE))
-  eval(.(do_compute_R_sqs = FALSE, do_compute_sigmas = TRUE ))
-  eval(.(do_compute_R_sqs = TRUE , do_compute_sigmas = TRUE ))
+  vals <- expand.grid(
+    do_compute_R_sqs    = c(T, F),
+    do_compute_sigmas   = c(T, F),
+    do_1_step_forecasts = c(T, F))
+  for(i in 1:nrow(vals))
+    eval(do.call(., as.list(vals[i, ])))
 })

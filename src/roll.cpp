@@ -33,27 +33,39 @@ inline double
     return sse;
   }
 
+inline double dot(const double *x, const double *y, const unsigned int p){
+  double out = 0;
+  for(unsigned int j = 0; j < p; ++j, ++x, ++y)
+    out += *x * *y;
+  return out;
+}
+
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
 // [[Rcpp::export]]
 Rcpp::List roll_cpp(
     const arma::mat &X, const arma::vec &Y, int window,
-      const bool do_compute_R_sqs, const bool do_compute_sigmas){
+      const bool do_compute_R_sqs, const bool do_compute_sigmas,
+      const bool do_1_step_forecasts){
   int n = X.n_rows, p = X.n_cols;
   const int p_cnst = p;
   arma::mat X_T = X.t();
 
   /* initalize output */
   arma::mat out(p, n); // notice other order
-  arma::vec R_sqs, sigmas;
-  std::fill(out.begin()     , out.end()   , NA_REAL);
+  arma::vec R_sqs, sigmas, one_step_forecasts;
+  std::fill(out.begin()                 , out.end()               , NA_REAL);
   if(do_compute_R_sqs){
     R_sqs.set_size(n);
-    std::fill(R_sqs.begin() , R_sqs.end() , NA_REAL);
+    std::fill(R_sqs.begin()             , R_sqs.end()             , NA_REAL);
   }
   if(do_compute_sigmas){
     sigmas.set_size(n);
-    std::fill(sigmas.begin(), sigmas.end(), NA_REAL);
+    std::fill(sigmas.begin()            , sigmas.end()            , NA_REAL);
+  }
+  if(do_1_step_forecasts){
+    one_step_forecasts.set_size(n);
+    std::fill(one_step_forecasts.begin(), one_step_forecasts.end(), NA_REAL);
   }
 
   /* define intermediates */
@@ -150,9 +162,7 @@ Rcpp::List roll_cpp(
     double ss_reg = 0;
     if(do_compute_R_sqs or do_compute_sigmas){
       for(int k = i - (window - 1L); k <= i; ++k){
-        double res = Y[k];
-        for(int j = 0; j < p; ++j)
-          res -= out[i * p + j] * X_T[k * p + j];
+        double res = Y[k] - dot(&out[i * p], &X_T[k * p], p);
         ss_reg += res * res;
       }
 
@@ -162,6 +172,11 @@ Rcpp::List roll_cpp(
 
     if(do_compute_R_sqs){
       R_sqs[i] = (ss_tot  - ss_reg) / ss_tot;
+    }
+
+    if(do_1_step_forecasts and i < n - 1L){
+      int next_i = i + 1L;
+      one_step_forecasts[next_i] = dot(&out[i * p], &X_T[next_i * p], p);
     }
   }
 
@@ -176,6 +191,11 @@ Rcpp::List roll_cpp(
     out_list["r.squareds"] = R_sqs;
   else
     out_list["r.squareds"] = R_NilValue;
+
+  if(do_1_step_forecasts)
+    out_list["one_step_forecasts"] = one_step_forecasts;
+  else
+    out_list["one_step_forecasts"] = R_NilValue;
 
   return out_list;
 }

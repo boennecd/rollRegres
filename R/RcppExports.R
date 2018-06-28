@@ -3,7 +3,7 @@
 
 #' @import Rcpp
 #' @useDynLib rollRegres, .registration = TRUE
-roll_cpp <- function(X, Y, window, do_compute_R_sqs, do_compute_sigmas) {
-    .Call(`_rollRegres_roll_cpp`, X, Y, window, do_compute_R_sqs, do_compute_sigmas)
+roll_cpp <- function(X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts) {
+    .Call(`_rollRegres_roll_cpp`, X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts)
 }
 
