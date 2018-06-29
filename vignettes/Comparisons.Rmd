@@ -1,27 +1,26 @@
 ---
-title: "Comparisons of computation time"
+title: "Computation time and features"
 author: "Benjamin Christoffersen"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Comparisons of computation time}
+  %\VignetteIndexEntry{Computation time and features}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
 ```{r setup, include = FALSE}
 options(width = 80)
-knitr::opts_chunk$set(collapse = TRUE, comment = "#R>")
+knitr::opts_chunk$set(collapse = TRUE, comment = "#R>", error = FALSE)
 ```
-
-# TODO: motivate and show features
 
 This vignette shows comparisons in terms of computation with other packages and 
 alternative `base` R solutions. Specifially, we will make comparissons with the 
 `roll` package and `zoo` package. It should be stressed though that the other 
 solutions do additional things than this package does. E.g., there is not 
 performed any rank test in the function in this package. We start by showing 
-the basic features of the package...
+the comparisons of computation time and then we show different options. R 
+versions of the C++ function are shown to make it clear what the output is.
 
 # Comparisons
 
@@ -163,6 +162,89 @@ microbenchmark::microbenchmark(
   roll_regress_R_for_loop = roll_regress_R_for_loop(X, y, wdth),
   roll_lm = roll_lm_func(X, y, wdth),
   times = 5)
+
+# here is the formula used above
+frm
+```
+
+# Additional features
+
+This section will cover some additional features.
+
+## Expanding window
+
+Here are expanding window regressions with additional output
+
+```{r expanding_window}
+#####
+# simulate data
+
+```
+
+## Update in blocks
+You can use the `grp` argument to make updates in block. E.g., here is an 
+example with weekly data
+
+```{r block_example}
+#####
+# simulate data
+set.seed(68799379)
+week <- as.integer(gl(25, 7))
+n <- length(week)
+p <- 2
+X <- matrix(rnorm(p * n), n, p)
+y <- drop(X %*% runif(p)) + rnorm(n)
+
+#####
+# use package function
+pck_out <- roll_regres.fit(
+  X, y, width = 10L, grp = week, 
+  do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
+
+#####
+# make R-version
+R_func <- function(X, y, width, grp){
+  u_grp = unique(grp)
+  n <- nrow(X)
+  p <- ncol(X)
+  out <- matrix(NA_real_, n, p)
+  sigmas             <- rep(NA_real_, n)
+  r.squared          <- rep(NA_real_, n)
+  one_step_forecasts <- rep(NA_real_, n)
+
+  start_val <- max(which(u_grp <= width))
+  for(g in u_grp[start_val:length(u_grp)]){
+    idx <- which(grp %in% (g - width + 1L):g)
+    i <- which(grp == g)
+    fit <- lm(y[idx] ~ -1 + X[idx, , drop = FALSE])
+    out[i, ] <- sapply(fit$coefficients, rep, times = length(i))
+
+    su <- summary(fit)
+    sigmas[i] <- su$sigma
+
+    ss1 <- sum((y[idx] - mean(y[idx]))^2)
+    ss2 <- sum(fit$residuals^2)
+    r.squared[i] <- 1 - ss2 / ss1
+
+    if(g != max(grp)){
+      next_g <- grp[min(which(grp > g))]
+      next_g <- which(grp == next_g)
+      one_step_forecasts[next_g] <- X[next_g, ] %*% fit$coefficients
+    }
+  }
+
+  list(coef = out, sigmas = sigmas, r.squared = r.squared,
+       one_step_forecasts = one_step_forecasts)
+}
+
+R_out <- R_func(X, y, 10L, grp = week)
+
+#####
+# gives the same
+stopifnot(isTRUE(all.equal(R_out$coef              , pck_out$coefs)))
+stopifnot(isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)))
+stopifnot(isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)))
+stopifnot(isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
 ```
 
 # Session info

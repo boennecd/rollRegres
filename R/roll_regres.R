@@ -114,7 +114,8 @@ roll_regres <- function(
 #'
 #' @seealso \code{\link{roll_regres}} for method similar to \code{\link{lm}}.
 #'
-#' @importFrom checkmate assert_int assert_matrix assert_numeric assert_character
+#' @importFrom checkmate assert_int assert_matrix assert_numeric
+#' assert_character assert_integer
 #' @export
 roll_regres.fit <- function(
   x, y, width, do_compute = character(), grp = NULL){
@@ -132,7 +133,9 @@ roll_regres.fit <- function(
     grp <- 1:nrow(x)
 
   } else {
-    stop("TODO: check")
+    assert_integer(grp, null.ok = FALSE, sorted = TRUE, len = nrow(x))
+    if(diff(range(grp)) > nrow(x))
+      stop(sQuote("grp"), " has too large differences")
     use_grp <- TRUE
 
   }

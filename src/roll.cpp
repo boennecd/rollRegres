@@ -3,6 +3,7 @@
 #include "BLAS_LINPACK.h"
 #include <memory>
 #include <cstring>
+#include <sstream>
 
 extern "C" {
   void F77_NAME(dchud)(
@@ -47,6 +48,10 @@ inline int find_stard_end(
     Rcpp::stop("Invalid 'start' and 'n'");
 
   end = start;
+  if(delta_grp <= 0L){
+    return 0L;
+  }
+
   int start_grp = *(grp + start), next_grp = start_grp, old_grp, length = 0L;
 
   do {
@@ -119,14 +124,13 @@ Rcpp::List roll_cpp(
   for(int i = 0L; i < n; i = end){
     if(is_first){ // setup QR decomposition
       if(use_grp){
-        /* find data start and end. We need to find where this group start so we
-         * call `find_stard_end` twice */
         sample_size += find_stard_end(
-          start         , this_grp_start, window - 1L, grp.begin(), n);
-        end = this_grp_start;
-
-        sample_size += find_stard_end(
-          this_grp_start, end           , 1L         , grp.begin(), n);
+          start         , end, window, grp.begin(), n);
+        /* need to find `this_grp_start` */
+        int last_grp = grp[end - 1L];
+        this_grp_start = end - 1L;
+        while(grp[this_grp_start - 1L] == last_grp and this_grp_start > 0L)
+          --this_grp_start;
 
       } else {
         start = 0L;
@@ -145,7 +149,7 @@ Rcpp::List roll_cpp(
       X_qr.reset(new double[p * ld_X_qr]);
       for(int j = 0; j < p; ++j){ /* for each covaraite */
         for(int k = start; k < end; ++k){ /* for each observation */
-          X_qr[k + j * window] = X[k + j * n];
+          X_qr[k + j * ld_X_qr] = X[k + j * n];
           XtY[j] += Y[k] * X[k + j * n];
         }
       }
@@ -165,7 +169,8 @@ Rcpp::List roll_cpp(
     } else {
       /* find data start and end for both new and old data */
       if(use_grp){
-        this_grp_start = start = end;
+        start = end;
+        this_grp_start = start;
         sample_size += find_stard_end(start, end, 1L , grp.begin(), n);
         /* E.g., window 10, grp[start] is 15, grp[delete_start] is 3 so we
          * grp[delete_end] to be at least 6 as we want at most 6-15 so diff
@@ -211,8 +216,11 @@ Rcpp::List roll_cpp(
             &X_qr[0], &ld_X_qr, &p, X_T_begin + inc_old,
             &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
 
-        if(info != 0)
-          Rcpp::stop("'dchdd' failed");
+        if(info != 0){
+          std::ostringstream os;
+          os << "'dchdd' failed with code " << info;
+          Rcpp::stop(os.str());
+        }
 
         // downdate X^T y
         for(int j = 0; j < p; ++j)
@@ -254,8 +262,8 @@ Rcpp::List roll_cpp(
     /* copy values */
     {
       double *o = out.begin(), *o_copy = o + coef_start;
-      for(int k = this_grp_start; k < end - 1L; ++k)
-        std::memcpy(o_copy, o + k * p, p * sizeof(double));
+      for(int k = this_grp_start; k < end; ++k)
+        std::memcpy(o + k * p, o_copy, p * sizeof(double));
     }
 
     /* compute other values if requested */
