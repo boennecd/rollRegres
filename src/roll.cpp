@@ -2,6 +2,7 @@
 #include "RcppArmadillo.h"
 #include "BLAS_LINPACK.h"
 #include <memory>
+#include <cstring>
 
 extern "C" {
   void F77_NAME(dchud)(
@@ -40,16 +41,42 @@ inline double dot(const double *x, const double *y, const unsigned int p){
   return out;
 }
 
+inline int find_stard_end(
+    int &start, int &end, const int delta_grp, const int *grp, const int n){
+  if(start == n)
+    Rcpp::stop("Invalid 'start' and 'n'");
+
+  end = start;
+  int start_grp = *(grp + start), next_grp = start_grp, old_grp, length = 0L;
+
+  do {
+    ++length;
+
+    if(end == n - 1L){ /* reached the end */
+      ++end;
+      break;
+    }
+
+    old_grp = next_grp;
+    next_grp = *(grp + ++end);
+    if(old_grp > next_grp)
+      Rcpp::stop("'grp' is not sorted");
+  } while(next_grp - start_grp < delta_grp);
+
+  return length;
+}
+
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
 // [[Rcpp::export]]
 Rcpp::List roll_cpp(
     const arma::mat &X, const arma::vec &Y, int window,
       const bool do_compute_R_sqs, const bool do_compute_sigmas,
-      const bool do_1_step_forecasts){
+      const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp){
   int n = X.n_rows, p = X.n_cols;
   const int p_cnst = p;
   arma::mat X_T = X.t();
+  const double too_low = p * 3;
 
   /* initalize output */
   arma::mat out(p, n); // notice other order
@@ -69,32 +96,55 @@ Rcpp::List roll_cpp(
   }
 
   /* define intermediates */
-  bool is_first = true;
+  bool is_first = true, have_warned = false;
   double d_one = 1, ddum, y_bar = 0., ss_tot = 0.;
   int i_one = 1L, i_zero = 0L, t = 0L;
-  std::unique_ptr<int    []> jpvt (new int[p]            );
-  std::unique_ptr<double []> qraux(new double[p]         );
-  std::unique_ptr<double []> X_qr (new double[window * p]);
-  std::unique_ptr<double []> XtY  (new double[p]         );
-  std::unique_ptr<double []> c    (new double[p]         );
-  std::unique_ptr<double []> s    (new double[p]         );
+  std::unique_ptr<int    []> jpvt (new int[p]   );
+  std::unique_ptr<double []> qraux(new double[p]);
+  std::unique_ptr<double []> X_qr;
+  int ld_X_qr;
+  std::unique_ptr<double []> XtY  (new double[p]);
+  std::unique_ptr<double []> c    (new double[p]);
+  std::unique_ptr<double []> s    (new double[p]);
   double *X_T_begin = X_T.begin();
 
   for(int i = 0; i < p; ++i){
     jpvt[i] = 0;
     XtY[i] = 0;
   }
+  int start = 0, end = 0L, delete_start = -1L, delete_end = 0L,
+    sample_size = 0L, this_grp_start = -1L;
 
   /* compute values */
-  for(int i = window - 1; i < n; ++i){
+  for(int i = 0L; i < n; i = end){
     if(is_first){ // setup QR decomposition
+      if(use_grp){
+        /* find data start and end. We need to find where this group start so we
+         * call `find_stard_end` twice */
+        sample_size += find_stard_end(
+          start         , this_grp_start, window - 1L, grp.begin(), n);
+        end = this_grp_start;
+
+        sample_size += find_stard_end(
+          this_grp_start, end           , 1L         , grp.begin(), n);
+
+      } else {
+        start = 0L;
+        end = window;
+        this_grp_start = end - 1L;
+        sample_size = window;
+
+      }
+
       is_first = false;
       int job = 0; /* do not pivot */
       double work; /* not referenced when not pivoting */
 
       // copy values
+      ld_X_qr = end - start;
+      X_qr.reset(new double[p * ld_X_qr]);
       for(int j = 0; j < p; ++j){ /* for each covaraite */
-        for(int k = 0; k < window; ++k){ /* for each observation */
+        for(int k = start; k < end; ++k){ /* for each observation */
           X_qr[k + j * window] = X[k + j * n];
           XtY[j] += Y[k] * X[k + j * n];
         }
@@ -105,41 +155,84 @@ Rcpp::List roll_cpp(
        * We use `dqrdc` instead where we can select not to perform pivoting.
        * NOTICE: no rank check
        */
-      dqrdc(&X_qr[0], &window, &window, &p, &qraux[0], &jpvt[0], &work, &job);
+      dqrdc(&X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
+            &work, &job);
 
       if(do_compute_R_sqs)
-        while(t < window)
+        while(t < end - start)
           update_sse(Y[t], ss_tot, t, y_bar);
 
     } else {
-      // update R
-      int inc_new = i * p, inc_old = (i - window) * p;
+      /* find data start and end for both new and old data */
+      if(use_grp){
+        this_grp_start = start = end;
+        sample_size += find_stard_end(start, end, 1L , grp.begin(), n);
+        /* E.g., window 10, grp[start] is 15, grp[delete_start] is 3 so we
+         * grp[delete_end] to be at least 6 as we want at most 6-15 so diff
+         * should be between grp[delete_start] and grp[delete_end] should be
+         *    3 = 15 - 3 - 10
+         * or same example with 10, 11, and 1 which yields 1 = 11 - 1 - 10 + 1
+         */
+        delete_start = delete_end;
+        sample_size -= find_stard_end(
+          delete_start, delete_end,
+          grp[start] - grp[delete_start] - window + 1L,
+          grp.begin(), n);
 
-      F77_CALL(dchud)(
-          &X_qr[0], &window, &p, X_T_begin + inc_new,
-          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
+      } else {
+        start = end;
+        ++end;
+        ++delete_start;
+        ++delete_end;
+        ++this_grp_start;
 
-      int info;
-      F77_CALL(dchdd)(
-          &X_qr[0], &window, &p, X_T_begin + inc_old,
-          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
+      }
 
-      if(info != 0)
-        Rcpp::stop("'dchdd' failed");
+      /* updates */
+      for(int k = start; k < end; ++k){
+        int inc_new = k * p;
+        F77_CALL(dchud)(
+            &X_qr[0], &ld_X_qr, &p, X_T_begin + inc_new,
+            &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
 
-      // update and downdate X^T y
-      for(int j = 0; j < p; ++j)
-        XtY[j] += Y[i] * X_T[j + inc_new] - Y[i - window] * X_T[j + inc_old];
+        /* update X^T y */
+        for(int j = 0; j < p; ++j)
+          XtY[j] += Y[k] * X_T[j + inc_new];
 
-      if(do_compute_R_sqs){
-        update_sse  (Y[i         ], ss_tot, t, y_bar);
-        downdate_sse(Y[i - window], ss_tot, t, y_bar);
+        if(do_compute_R_sqs)
+          update_sse(Y[k], ss_tot, t, y_bar);
+      }
+
+      /* downdates */
+      for(int k = delete_start; k < delete_end; ++k){
+        int inc_old = k * p;
+        int info;
+        F77_CALL(dchdd)(
+            &X_qr[0], &ld_X_qr, &p, X_T_begin + inc_old,
+            &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
+
+        if(info != 0)
+          Rcpp::stop("'dchdd' failed");
+
+        // downdate X^T y
+        for(int j = 0; j < p; ++j)
+          XtY[j] -= Y[k] * X_T[j + inc_old];
+
+        if(do_compute_R_sqs)
+          downdate_sse(Y[k], ss_tot, t, y_bar);
       }
     }
 
+    if(!have_warned and sample_size < too_low){
+      have_warned = true;
+      Rcpp::warning("low sample size relative to number of parameters");
+    }
+
     // compute X^-T X = X^T y
+    int coef_start = this_grp_start * p;
     for(int j = 0; j < p; ++j)
-      out[j + i * p] = XtY[j];
+      out[j + coef_start] = XtY[j];
+
     /* See `r-source/src/library/base/R/backsolve.R` and
      * `r-source/src/main/array.c`
      *
@@ -151,32 +244,47 @@ Rcpp::List roll_cpp(
      */
     dtrsm(
         "L", "U", "T", "N", &p_cnst, &i_one /* Y has one column */, &d_one,
-        &X_qr[0], &window /* LDA */,
-        out.begin() + i * p, &p_cnst);
+        &X_qr[0], &ld_X_qr /* LDA */,
+        out.begin() + coef_start, &p_cnst);
     dtrsm(
         "L", "U", "N" /*  only difference */, "N", &p_cnst, &i_one, &d_one,
-        &X_qr[0], &window,
-        out.begin() + i * p, &p_cnst);
+        &X_qr[0], &ld_X_qr,
+        out.begin() + coef_start, &p_cnst);
+
+    /* copy values */
+    {
+      double *o = out.begin(), *o_copy = o + coef_start;
+      for(int k = this_grp_start; k < end - 1L; ++k)
+        std::memcpy(o_copy, o + k * p, p * sizeof(double));
+    }
 
     /* compute other values if requested */
     double ss_reg = 0;
     if(do_compute_R_sqs or do_compute_sigmas){
-      for(int k = i - (window - 1L); k <= i; ++k){
-        double res = Y[k] - dot(&out[i * p], &X_T[k * p], p);
+      for(int k = delete_end; k < end; ++k){
+        double res = Y[k] - dot(&out[coef_start], &X_T[k * p], p);
         ss_reg += res * res;
       }
 
-      if(do_compute_sigmas)
-        sigmas[i] = std::sqrt(ss_reg / (window - p));
+      if(do_compute_sigmas){
+        double new_sigma = std::sqrt(ss_reg / (sample_size - p));
+        for(int k = this_grp_start; k < end; ++k)
+          sigmas[k] = new_sigma;
+      }
     }
 
     if(do_compute_R_sqs){
-      R_sqs[i] = (ss_tot  - ss_reg) / ss_tot;
+      double new_R_sqs = (ss_tot  - ss_reg) / ss_tot;
+      for(int k = this_grp_start; k < end; ++k)
+        R_sqs[k] = new_R_sqs;
     }
 
-    if(do_1_step_forecasts and i < n - 1L){
-      int next_i = i + 1L;
-      one_step_forecasts[next_i] = dot(&out[i * p], &X_T[next_i * p], p);
+    if(do_1_step_forecasts and end < n){
+      int next_i = end;
+      int next_grp = grp[next_i];
+      for(; next_i < n and grp[next_i] == next_grp; ++next_i)
+        one_step_forecasts[next_i] =
+          dot(&out[coef_start], &X_T[next_i * p], p);
     }
   }
 

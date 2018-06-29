@@ -10,12 +10,19 @@
 #' @param do_compute character vector with elements \code{"sigmas"},
 #' \code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
 #' to be computed. See "Details" in \code{\link{roll_regres}}.
+#' @param grp integer vector to be used if you e.g., want to run the regression
+#' over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.
 #'
 #' @details
 #' \code{do_compute} can contain \code{"sigmas"} for the estimated standard
 #' deviation of the residuals, \code{"r.squareds"} for the \eqn{R^2} of the
 #' models, and \code{"1_step_forecasts"} for the out-of-sample forecast for the
 #' next periods value.
+#'
+#' \code{grp} is a sorted integer vector if you want to make "block" updates.
+#' E.g., \code{grp} could be an integer vector with the week number. The
+#' \code{width} argument is relative to the \code{grp} argument if the
+#' \code{grp} argument is not \code{NULL}.
 #'
 #' @return
 #' List with vector and matrices with the computed output. See the
@@ -46,7 +53,8 @@
 #' @importFrom stats model.frame na.fail
 #' @export
 roll_regres <- function(
-  formula, data, width, contrasts = NULL, do_compute = character()){
+  formula, data, width, contrasts = NULL, do_compute = character(),
+  grp = NULL){
   # get model matrix and response
   cl <- match.call()
   mf <- match.call(expand.dots = FALSE)
@@ -60,11 +68,9 @@ roll_regres <- function(
   x <- model.matrix(tt, mf, contrasts = contrasts)
   y <- model.response(mf)
 
-  # run a few checks
-  assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
-
   # find results
-  out <- roll_regres.fit(x = x, y = y, width = width, do_compute = do_compute)
+  out <- roll_regres.fit(
+    x = x, y = y, width = width, do_compute = do_compute, grp = grp)
 
   # add contrasts as an attribuate
   attr(out, "terms") <- attr(x, "contrasts")
@@ -110,7 +116,10 @@ roll_regres <- function(
 #'
 #' @importFrom checkmate assert_int assert_matrix assert_numeric assert_character
 #' @export
-roll_regres.fit <- function(x, y, width, do_compute = character()){
+roll_regres.fit <- function(
+  x, y, width, do_compute = character(), grp = NULL){
+  #####
+  # checks
   assert_matrix(x, any.missing = FALSE)
   assert_numeric(y, finite = TRUE, any.missing = FALSE, len = nrow(x))
   assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
@@ -118,6 +127,18 @@ roll_regres.fit <- function(x, y, width, do_compute = character()){
   if(!all(do_compute %in% c("sigmas", "r.squareds", "1_step_forecasts")))
     stop(sQuote(do_compute), " contains elements which are not implemented")
 
+  if(is.null(grp)){
+    use_grp <- FALSE
+    grp <- 1:nrow(x)
+
+  } else {
+    stop("TODO: check")
+    use_grp <- TRUE
+
+  }
+
+  #####
+  # compute
   do_compute_sigmas   <- "sigmas"           %in% do_compute
   do_compute_R_sqs    <- "r.squareds"       %in% do_compute
   do_1_step_forecasts <- "1_step_forecasts" %in% do_compute
@@ -125,7 +146,7 @@ roll_regres.fit <- function(x, y, width, do_compute = character()){
   out <- roll_cpp(
     Y = y, X = x, window = width, do_compute_R_sqs = do_compute_R_sqs,
     do_compute_sigmas = do_compute_sigmas,
-    do_1_step_forecasts = do_1_step_forecasts)
+    do_1_step_forecasts = do_1_step_forecasts, grp = grp, use_grp = use_grp)
 
   # set dimnames
   dimnames(out$coefs) <- dimnames(x)

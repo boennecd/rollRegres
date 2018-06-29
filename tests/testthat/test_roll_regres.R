@@ -30,7 +30,8 @@ y <- c(I1 = 1.644, I2 = -0.511, I3 = -0.636, I4 = 0.596, I5 = -0.694,
 test_that("`roll_regres.fit` gives the same as `roll_cpp` but with dimnames", {
   out <- roll_regres.fit(X, y, 20L)
   expect_equal(
-    out, roll_cpp(X = X, Y = y, 20, FALSE, FALSE, FALSE), check.attributes = FALSE)
+    out, roll_cpp(X = X, Y = y, 20, FALSE, FALSE, FALSE, 1:nrow(X), FALSE),
+    check.attributes = FALSE)
 
   expect_equal(dimnames(out$coefs), dimnames(X))
 })
@@ -41,7 +42,8 @@ test_that("`roll_regres.fit` gives the same as `roll_cpp` but with dimnames when
     out$sigmas,
     drop(roll_cpp(
       X = X, Y = y, 20, do_compute_sigmas = TRUE,
-      do_compute_R_sqs = FALSE, do_1_step_forecasts = FALSE)$sigmas),
+      do_compute_R_sqs = FALSE, do_1_step_forecasts = FALSE,
+      grp = 1:nrow(X), use_grp = FALSE)$sigmas),
     check.attributes = FALSE)
   expect_equal(names(out$sigmas), row.names(X))
 
@@ -50,7 +52,8 @@ test_that("`roll_regres.fit` gives the same as `roll_cpp` but with dimnames when
     out$r.squareds,
     drop(roll_cpp(
       X = X, Y = y, 20, do_compute_sigmas = FALSE,
-      do_compute_R_sqs = TRUE, do_1_step_forecasts = FALSE)$r.squareds),
+      do_compute_R_sqs = TRUE, do_1_step_forecasts = FALSE,
+      grp = 1:nrow(X), use_grp = FALSE)$r.squareds),
     check.attributes = FALSE)
   expect_equal(names(out$r.squareds), row.names(X))
 
@@ -59,8 +62,8 @@ test_that("`roll_regres.fit` gives the same as `roll_cpp` but with dimnames when
     out$one_step_forecasts,
     drop(roll_cpp(
       X = X, Y = y, 20, do_compute_sigmas = FALSE,
-      do_compute_R_sqs = FALSE,
-      do_1_step_forecasts = TRUE)$one_step_forecasts),
+      do_compute_R_sqs = FALSE, do_1_step_forecasts = TRUE,
+      grp = 1:nrow(X), use_grp = FALSE)$one_step_forecasts),
     check.attributes = FALSE)
   expect_equal(names(out$one_step_forecasts), row.names(X))
 })
