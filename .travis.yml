@@ -1,0 +1,6 @@
+language: r
+cache: packages
+r_build_args: --compact-vignettes=gs+qpdf
+r_check_args: --compact-vignettes=gs+qpdf
+
+after_failure: "cat /home/travis/build/boennecd/rollRegres/rollRegres.Rcheck/00install.out"
