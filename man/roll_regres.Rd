@@ -12,9 +12,10 @@ roll_regres(formula, data, width, contrasts = NULL,
 
 \item{data}{an optional \code{data.frame} containing the variables in the model.}
 
-\item{width}{integer with the width of the moving window.}
+\item{width}{integer with the width of the moving window. Only used if
+\code{do_downdates == TRUE}.}
 
-\item{contrasts}{list passed to \code{\link{model.matrix.default}}
+\item{contrasts}{list passed to \code{\link{model.matrix.default}}s
 \code{contrasts.arg} argument.}
 
 \item{do_compute}{character vector with elements \code{"sigmas"},
@@ -25,7 +26,7 @@ to be computed. See "Details" in \code{\link{roll_regres}}.}
 over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
 
 \item{do_downdates}{logical which is \code{TRUE} if you want a rolling
-window regression. Otherwise, an expanding window is used.}
+window regressions. Otherwise, an expanding window is used.}
 }
 \value{
 List with vector and matrices with the computed output. See the

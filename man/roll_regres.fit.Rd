@@ -12,7 +12,8 @@ roll_regres.fit(x, y, width, do_compute = character(), grp = NULL,
 
 \item{y}{numeric vector of observations of length \code{n}.}
 
-\item{width}{integer with the width of the moving window.}
+\item{width}{integer with the width of the moving window. Only used if
+\code{do_downdates == TRUE}.}
 
 \item{do_compute}{character vector with elements \code{"sigmas"},
 \code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
@@ -22,7 +23,7 @@ to be computed. See "Details" in \code{\link{roll_regres}}.}
 over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
 
 \item{do_downdates}{logical which is \code{TRUE} if you want a rolling
-window regression. Otherwise, an expanding window is used.}
+window regressions. Otherwise, an expanding window is used.}
 }
 \value{
 Same as \code{\link{roll_regres}}.

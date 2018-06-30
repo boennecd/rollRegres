@@ -4,3 +4,4 @@ tmp\.txt$
 ^notes/.*
 ^\.travis\.yml$
 ^cran-comments\.md$
+^README\.md$
