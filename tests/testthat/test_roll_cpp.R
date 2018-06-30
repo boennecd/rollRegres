@@ -1,6 +1,6 @@
 context("Testing `roll_cpp`")
 
-test_that("`roll_cpp` works in 1 length block case", {
+test_that("`roll_cpp` works in 1 length block case with and without downdating", {
   # set.seed(101)
   # n <- 100
   # p <- 3
@@ -60,7 +60,7 @@ test_that("`roll_cpp` works in 1 length block case", {
     1.373, -0.834, -0.656)
   wdth = 40
 
-  roll_regress_R_for_loop <- function(X, y, width){
+  roll_regress_R_for_loop <- function(X, y, width, downdate){
     n <- nrow(X)
     p <- ncol(X)
     out <- matrix(NA_real_, n, p)
@@ -69,7 +69,7 @@ test_that("`roll_cpp` works in 1 length block case", {
     one_step_forecasts <- rep(NA_real_, n)
 
     for(i in width:n){
-      idx <- (i - width + 1L):i
+      idx <- if(downdate) (i - width + 1L):i else 1:i
       fit <- lm(y[idx] ~ -1 + X[idx, , drop = FALSE])
       out[i, ] <- fit$coefficients
 
@@ -90,16 +90,15 @@ test_that("`roll_cpp` works in 1 length block case", {
          one_step_forecasts = one_step_forecasts)
   }
 
-  r_out <- roll_regress_R_for_loop(X, y, wdth)
-
   . <- function(
-    do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, use_grp)
+    do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, use_grp,
+    do_downdates)
     substitute({
       cpp_out <- roll_cpp(Y = y, X = X, window = wdth,
                do_compute_R_sqs = do_compute_R_sqs,
                do_compute_sigmas = do_compute_sigmas,
                do_1_step_forecasts = do_1_step_forecasts, grp = 1:nrow(X),
-               use_grp = use_grp)
+               use_grp = use_grp, do_downdates = do_downdates)
       expect_equal(r_out$coef, cpp_out$coefs)
       t1
       t2
@@ -118,18 +117,26 @@ test_that("`roll_cpp` works in 1 length block case", {
       do_compute_R_sqs = do_compute_R_sqs,
       do_compute_sigmas = do_compute_sigmas,
       do_1_step_forecasts = do_1_step_forecasts,
-      use_grp = use_grp))
+      use_grp = use_grp, do_downdates = do_downdates))
 
   vals <- expand.grid(
     do_compute_R_sqs    = c(T, F),
     do_compute_sigmas   = c(T, F),
     do_1_step_forecasts = c(T, F),
-    use_grp             = c(T, F))
+    use_grp             = c(T, F),
+    do_downdates        =   T)
+
+  r_out <- roll_regress_R_for_loop(X, y, wdth, downdate = TRUE)
+  for(i in 1:nrow(vals))
+    eval(do.call(., as.list(vals[i, ])))
+
+  vals$do_downdates <- FALSE
+  r_out <- roll_regress_R_for_loop(X, y, wdth, downdate = FALSE)
   for(i in 1:nrow(vals))
     eval(do.call(., as.list(vals[i, ])))
 })
 
-test_that("`roll_cpp` works in n > 1 length block case", {
+test_that("`roll_cpp` works in n > 1 length block case with and without downdating", {
   # set.seed(71336382)
   # week <- as.integer(gl(25, 5))
   # week <- week[!week %in% c(3, 10:12, 18)] # miss some weeks
@@ -188,7 +195,7 @@ test_that("`roll_cpp` works in n > 1 length block case", {
     -0.914, -1.104, -0.114)
   wdth = 10L
 
-  roll_regress_R_for_loop <- function(X, y, width, grp){
+  roll_regress_R_for_loop <- function(X, y, width, grp, downdate){
     u_grp = unique(grp)
     n <- nrow(X)
     p <- ncol(X)
@@ -199,7 +206,10 @@ test_that("`roll_cpp` works in n > 1 length block case", {
 
     start_val <- max(which(u_grp <= width))
     for(g in u_grp[start_val:length(u_grp)]){
-      idx <- which(grp %in% (g - width + 1L):g)
+      idx <-
+        if(downdate)
+          which(grp %in% (g - width + 1L):g) else
+            which(grp %in% 1:g)
       i <- which(grp == g)
       fit <- lm(y[idx] ~ -1 + X[idx, , drop = FALSE])
       out[i, ] <- sapply(fit$coefficients, rep, times = length(i))
@@ -222,16 +232,16 @@ test_that("`roll_cpp` works in n > 1 length block case", {
          one_step_forecasts = one_step_forecasts)
   }
 
-  r_out <- roll_regress_R_for_loop(X, y, wdth, grp = week)
-
   . <- function(
-    do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, use_grp)
+    do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, use_grp,
+    do_downdates)
     substitute({
       cpp_out <- roll_cpp(Y = y, X = X, window = wdth,
                           do_compute_R_sqs = do_compute_R_sqs,
                           do_compute_sigmas = do_compute_sigmas,
                           do_1_step_forecasts = do_1_step_forecasts,
-                          grp = week, use_grp = TRUE)
+                          grp = week, use_grp = TRUE,
+                          do_downdates = do_downdates)
       expect_equal(r_out$coef, cpp_out$coefs)
       t1
       t2
@@ -249,12 +259,20 @@ test_that("`roll_cpp` works in n > 1 length block case", {
             quote(expect_null(cpp_out$one_step_forecasts)),
       do_compute_R_sqs = do_compute_R_sqs,
       do_compute_sigmas = do_compute_sigmas,
-      do_1_step_forecasts = do_1_step_forecasts))
+      do_1_step_forecasts = do_1_step_forecasts, do_downdates = do_downdates))
 
   vals <- expand.grid(
     do_compute_R_sqs    = c(T, F),
     do_compute_sigmas   = c(T, F),
-    do_1_step_forecasts = c(T, F))
+    do_1_step_forecasts = c(T, F),
+    do_downdates        =   T)
+
+  r_out <- roll_regress_R_for_loop(X, y, wdth, grp = week, downdate = TRUE)
+  for(i in 1:nrow(vals))
+    eval(do.call(., as.list(vals[i, ])))
+
+  r_out <- roll_regress_R_for_loop(X, y, wdth, grp = week, downdate = FALSE)
+  vals$do_downdates <- FALSE
   for(i in 1:nrow(vals))
     eval(do.call(., as.list(vals[i, ])))
 })

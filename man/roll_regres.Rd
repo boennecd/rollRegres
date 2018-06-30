@@ -2,19 +2,20 @@
 % Please edit documentation in R/roll_regres.R
 \name{roll_regres}
 \alias{roll_regres}
-\title{Fitting Rolling Linear Models}
+\title{Fitting Rolling and Expanding Linear Models}
 \usage{
 roll_regres(formula, data, width, contrasts = NULL,
-  do_compute = character(), grp = NULL)
+  do_compute = character(), grp = NULL, do_downdates = TRUE)
 }
 \arguments{
-\item{formula}{as \code{formula} as in \code{\link{lm}}.}
+\item{formula}{as \code{formula} in \code{\link{lm}}.}
 
 \item{data}{an optional \code{data.frame} containing the variables in the model.}
 
 \item{width}{integer with the width of the moving window.}
 
-\item{contrasts}{list passed to \code{\link{model.matrix.default}}.}
+\item{contrasts}{list passed to \code{\link{model.matrix.default}}
+\code{contrasts.arg} argument.}
 
 \item{do_compute}{character vector with elements \code{"sigmas"},
 \code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
@@ -22,26 +23,33 @@ to be computed. See "Details" in \code{\link{roll_regres}}.}
 
 \item{grp}{integer vector to be used if you e.g., want to run the regression
 over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
+
+\item{do_downdates}{logical which is \code{TRUE} if you want a rolling
+window regression. Otherwise, an expanding window is used.}
 }
 \value{
 List with vector and matrices with the computed output. See the
 \code{do_compute} argument.
 }
 \description{
-Method for fast rolling regression models. I.e., linear models
-estimated over a moving window of data. The function assumes that data is
-orded.
+Method for fast rolling and expanding regression models. I.e.,
+linear models estimated over a moving window or expanding window of data.
+The function assumes that data is ordered.
 }
 \details{
-\code{do_compute} can contain \code{"sigmas"} for the estimated standard
-deviation of the residuals, \code{"r.squareds"} for the \eqn{R^2} of the
-models, and \code{"1_step_forecasts"} for the out-of-sample forecast for the
-next periods value.
+\code{do_compute} can contain \code{"sigmas"} if you want the estimated
+standard deviation of the residuals, \code{"r.squareds"} for the \eqn{R^2}
+of the models, and \code{"1_step_forecasts"} for the out-of-sample forecast
+for the next periods value.
 
 \code{grp} is a sorted integer vector if you want to make "block" updates.
 E.g., \code{grp} could be an integer vector with the week number. The
 \code{width} argument is relative to the \code{grp} argument if the
-\code{grp} argument is not \code{NULL}.
+\code{grp} argument is not \code{NULL}. The indices of \code{grp} should
+match with the other data objects.
+
+See \code{vignette("Comparisons", package = "rollRegres")} for further
+examples.
 }
 \examples{
 # simulate data

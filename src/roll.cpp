@@ -77,7 +77,8 @@ inline int find_stard_end(
 Rcpp::List roll_cpp(
     const arma::mat &X, const arma::vec &Y, int window,
       const bool do_compute_R_sqs, const bool do_compute_sigmas,
-      const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp){
+      const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp,
+      const bool do_downdates){
   int n = X.n_rows, p = X.n_cols;
   const int p_cnst = p;
   arma::mat X_T = X.t();
@@ -117,7 +118,8 @@ Rcpp::List roll_cpp(
     jpvt[i] = 0;
     XtY[i] = 0;
   }
-  int start = 0, end = 0L, delete_start = -1L, delete_end = 0L,
+  int start = 0, end = 0L,
+    delete_start = (do_downdates) ? -1L : 0L, delete_end = 0L,
     sample_size = 0L, this_grp_start = -1L;
 
   /* compute values */
@@ -178,18 +180,24 @@ Rcpp::List roll_cpp(
          *    3 = 15 - 3 - 10
          * or same example with 10, 11, and 1 which yields 1 = 11 - 1 - 10 + 1
          */
-        delete_start = delete_end;
-        sample_size -= find_stard_end(
-          delete_start, delete_end,
-          grp[start] - grp[delete_start] - window + 1L,
-          grp.begin(), n);
+        if(do_downdates){
+          delete_start = delete_end;
+          sample_size -= find_stard_end(
+            delete_start, delete_end,
+            grp[start] - grp[delete_start] - window + 1L,
+            grp.begin(), n);
+        }
 
       } else {
         start = end;
         ++end;
-        ++delete_start;
-        ++delete_end;
         ++this_grp_start;
+        if(do_downdates){
+          ++delete_start;
+          ++delete_end;
+
+        } else
+          ++sample_size;
 
       }
 

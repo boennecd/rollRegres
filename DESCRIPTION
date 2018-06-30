@@ -1,12 +1,13 @@
 Package: rollRegres
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Fast Rolling and Expanding Window Linear Regression
 Version: 0.1.0
-Author: Who wrote it
-Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
-License: What license is it under?
+Authors@R: person("Benjamin", "Christoffersen", 
+                  email = "boennecd@gmail.com", 
+                  role = c("cre", "aut"))
+Description: Methods for fast rolling and expanding regression models.
+Copyright: Jack Dongarra, Jim Bunch, Cleve Moler, and Gilbert Stewart due to the LINPACK routines `dchdd` and `dchud`.
+License: GPL-2
 Encoding: UTF-8
 LazyData: true
 LinkingTo: Rcpp, RcppArmadillo
@@ -14,8 +15,12 @@ Imports: Rcpp, checkmate
 Suggests: knitr,
     rmarkdown,
     testthat,
-    SamplerCompare,
     zoo,
-    roll
+    roll, 
+    microbenchmark, 
+    RcppParallel
 VignetteBuilder: knitr
 RoxygenNote: 6.0.1
+BugReports: https://github.com/boennecd/rollRegres/issues
+SystemRequirements: C++11
+URL: https://github.com/boennecd/rollRegres

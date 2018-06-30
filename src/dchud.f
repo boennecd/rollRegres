@@ -4,7 +4,7 @@
       double precision r(ldr,p),x(p),z(ldz,nz),y(nz),s(p)
 c
 c     By B. Christoffersen. I downloaded the files from www.netlib.org/linpack.
-c     to pass bounds checks.
+c     Changed ones to pass bounds checks.
 c
 c     dchud updates an augmented cholesky decomposition of the
 c     triangular part of an augmented qr decomposition.  specifically,

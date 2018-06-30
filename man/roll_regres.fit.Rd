@@ -2,9 +2,10 @@
 % Please edit documentation in R/roll_regres.R
 \name{roll_regres.fit}
 \alias{roll_regres.fit}
-\title{Fitter Function for Rolling Linear Models}
+\title{Fitter Function for Rolling and Expanding Linear Models}
 \usage{
-roll_regres.fit(x, y, width, do_compute = character(), grp = NULL)
+roll_regres.fit(x, y, width, do_compute = character(), grp = NULL,
+  do_downdates = TRUE)
 }
 \arguments{
 \item{x}{design matrix of dimension \code{n * p}.}
@@ -19,18 +20,21 @@ to be computed. See "Details" in \code{\link{roll_regres}}.}
 
 \item{grp}{integer vector to be used if you e.g., want to run the regression
 over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
+
+\item{do_downdates}{logical which is \code{TRUE} if you want a rolling
+window regression. Otherwise, an expanding window is used.}
 }
 \value{
 Same as \code{\link{roll_regres}}.
 }
 \description{
-Function with a few validation before calling C++ code.
+Function with a few validations before calling C++ code.
 }
 \details{
-First, the \code{dqrdc} from routine from LINPACK is used to form the QR
+First, the \code{dqrdc} routine from LINPACK is used to form the QR
 decomposition for the first window of data using Householder transformations
 without pivoting. Then, the LINPACK \code{dchud} and \code{dchdd} routines
-are used to update and downdate the cholesky decomposition (the R matrix in
+are used to update and downdate the Cholesky decomposition (the R matrix in
 the QR decomposition).
 
 Notice that unlike \code{lm}, there are no checks of the rank of the matrix.

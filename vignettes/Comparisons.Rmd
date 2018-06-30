@@ -11,27 +11,30 @@ vignette: >
 
 ```{r setup, include = FALSE}
 options(width = 80)
-knitr::opts_chunk$set(collapse = TRUE, comment = "#R>", error = FALSE)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#R", error = FALSE)
 ```
 
-This vignette shows comparisons in terms of computation with other packages and 
-alternative `base` R solutions. Specifially, we will make comparissons with the 
+This vignette shows comparisons in terms of computation time with other packages and 
+alternative `base` R solutions. Specifically, we will make comparisons with the 
 `roll` package and `zoo` package. It should be stressed though that the other 
 solutions do additional things than this package does. E.g., there is not 
 performed any rank test in the function in this package. We start by showing 
-the comparisons of computation time and then we show different options. R 
-versions of the C++ function are shown to make it clear what the output is.
+the comparisons of computation times and then we show different options. R 
+versions of the functions are shown to make it clear what the output is. Some 
+function definitions are shown at the end.
 
 # Comparisons
 
 ```{r def_roll_funcs, echo = FALSE, message=FALSE}
 #####
 # Pure R version of package function
-library(SamplerCompare) # for LINPACK `chdd` and `chud`
 roll_regress_R <- function(X, y, width){
   n <- nrow(X)
   p <- ncol(X)
   out <- matrix(NA_real_, p, n)
+  
+  dummy_1 <- matrix(0.)
+  dummy_2 <- numeric(p)
 
   is_first <- TRUE
   for(i in width:n){
@@ -40,7 +43,7 @@ roll_regress_R <- function(X, y, width){
       qr. <- qr(X[1:width, ])
       R <- qr.R(qr.)
 
-      # Use X^T for the rest
+      # Use X^T
       X <- t(X)
 
       XtY <- drop(tcrossprod(y[1:width], X[, 1:width]))
@@ -49,16 +52,13 @@ roll_regress_R <- function(X, y, width){
       x_old <- X[, i - width]
 
       # update R 
-      R <- .Fortran(
-        "dchud", R, p, p, x_new, 0., 0L, 0L, 
-        0., 0., numeric(p), numeric(p), 
-        PACKAGE = "SamplerCompare")[[1]]
+      rollRegres:::dchud_wrap(
+        R, p, p, x_new, dummy_1, 0L, 0L, 0., 0., dummy_2, dummy_2)
 
       # downdate R
-      R <- .Fortran(
-        "dchdd", R, p, p, x_old, 0., 0L, 0L, 
-        0., 0., numeric(p), numeric(p), integer(1),
-        PACKAGE = "SamplerCompare")[[1]]
+      rollRegres:::dchdd_wrap(
+        R, p, p, x_old, dummy_1, 0L, 0L, 0., 0., dummy_2, dummy_2, 
+        integer(1))
 
       # update XtY
       XtY <- XtY + y[i] * x_new - y[i - width] * x_old
@@ -102,7 +102,7 @@ roll_regress_zoo <- function(x, y, width){
 }
 
 #####
-# roll lm
+# roll_lm
 library(roll)
 roll_lm_func <- function(x, y ,width)
   roll_lm(X, matrix(y, ncol = 1), wdth, intercept = FALSE)$coefficients[, -1L]
@@ -119,10 +119,10 @@ roll_regress_zoo        <- cmpfun(roll_regress_zoo)
 roll_lm_func            <- cmpfun(roll_lm_func)
 ```
 
-We start by Simulating the data
+We start by simulating the data
 
 ```{r sim_data}
-set.seed(101)
+set.seed(32981054)
 n <- 10000
 p <- 6
 wdth = 50
@@ -138,9 +138,9 @@ the end of this document)
 
 ```{r roll_gives_same}
 library(rollRegres)
-all.equal(roll_regress_R(X, y, wdth), roll_regres.fit(X, y, wdth), 
+all.equal(roll_regress_R(X, y, wdth), roll_regres.fit(X, y, wdth)$coefs, 
           check.attributes = FALSE)
-all.equal(roll_regress_R(X, y, wdth), roll_regres(frm, df, wdth), 
+all.equal(roll_regress_R(X, y, wdth), roll_regres(frm, df, wdth)$coefs, 
           check.attributes = FALSE)
 all.equal(roll_regress_R(X, y, wdth), roll_regress_zoo(X, y, wdth), 
           check.attributes = FALSE)
@@ -178,11 +178,62 @@ Here are expanding window regressions with additional output
 ```{r expanding_window}
 #####
 # simulate data
+set.seed(65731482)
+n <- 100
+p <- 2
+X <- matrix(rnorm(p * n), n, p)
+y <- drop(X %*% runif(p)) + rnorm(n)
 
+#####
+# use package function
+pck_out <- roll_regres.fit(
+  X, y, width = 50L, do_downdates = FALSE, 
+  do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
+
+#####
+# assign R-version
+R_func <- function(X, y, width){
+  n <- nrow(X)
+  p <- ncol(X)
+  out <- matrix(NA_real_, n, p)
+  sigmas             <- rep(NA_real_, n)
+  r.squared          <- rep(NA_real_, n)
+  one_step_forecasts <- rep(NA_real_, n)
+
+  for(i in width:n){
+    idx <- 1:i
+    fit <- lm(y[idx] ~ -1 + X[idx, , drop = FALSE])
+    out[i, ] <- fit$coefficients
+
+    su <- summary(fit)
+    sigmas[i] <- su$sigma
+
+    ss1 <- sum((y[idx] - mean(y[idx]))^2)
+    ss2 <- sum(fit$residuals^2)
+    r.squared[i] <- 1 - ss2 / ss1
+
+    if(i < n){
+      next_i <- i + 1L
+      one_step_forecasts[next_i] <- fit$coefficients %*% X[next_i, ]
+    }
+  }
+
+  list(coef = out, sigmas = sigmas, r.squared = r.squared,
+       one_step_forecasts = one_step_forecasts)
+}
+
+R_out <- R_func(X, y, 50L)
+
+#####
+# gives the same
+stopifnot(isTRUE(all.equal(R_out$coef              , pck_out$coefs)))
+stopifnot(isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)))
+stopifnot(isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)))
+stopifnot(isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
 ```
 
 ## Update in blocks
-You can use the `grp` argument to make updates in block. E.g., here is an 
+You can use the `grp` argument to make updates in blocks. E.g., here is an 
 example with weekly data
 
 ```{r block_example}
@@ -190,6 +241,7 @@ example with weekly data
 # simulate data
 set.seed(68799379)
 week <- as.integer(gl(25, 7))
+head(week[1:10])
 n <- length(week)
 p <- 2
 X <- matrix(rnorm(p * n), n, p)
@@ -202,7 +254,7 @@ pck_out <- roll_regres.fit(
   do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
 
 #####
-# make R-version
+# assign R-version
 R_func <- function(X, y, width, grp){
   u_grp = unique(grp)
   n <- nrow(X)
