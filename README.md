@@ -3,5 +3,5 @@
 [![CRAN RStudio mirror downloads](http://cranlogs.r-pkg.org/badges/rollRegres)](http://cran.rstudio.com/web/packages/rollRegres/index.html)
 
 # rollRegres
-This package contains function for fast fast rolling and expanding regression 
+This package contains functions for fast fast rolling and expanding linear regression 
 models.
