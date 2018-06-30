@@ -6,7 +6,7 @@
 This package contains functions for fast fast rolling and expanding linear 
 regression models. You can install the package from Github by calling
 
-````r
+```r
 devtools::install_github("boennecd/rollRegres", upgrade_dependencies = FALSE, 
                          build_vignettes = TRUE)
 ```
