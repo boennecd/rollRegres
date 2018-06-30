@@ -2,3 +2,5 @@
 ^\.Rproj\.user$
 tmp\.txt$
 ^notes/.*
+^\.travis\.yml$
+^cran-comments\.md$
