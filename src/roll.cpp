@@ -102,7 +102,7 @@ Rcpp::List roll_cpp(
   }
 
   /* define intermediates */
-  bool is_first = true, have_warned = false;
+  bool is_first = true, do_warn = false;
   double d_one = 1, ddum, y_bar = 0., ss_tot = 0.;
   int i_one = 1L, i_zero = 0L, t = 0L;
   std::unique_ptr<int    []> jpvt (new int[p]   );
@@ -178,7 +178,7 @@ Rcpp::List roll_cpp(
          * grp[delete_end] to be at least 6 as we want at most 6-15 so diff
          * should be between grp[delete_start] and grp[delete_end] should be
          *    3 = 15 - 3 - 10
-         * or same example with 10, 11, and 1 which yields 1 = 11 - 1 - 10 + 1
+         * or same example with 10, 11, and 0 which yields 1 = 11 - 0 - 10
          */
         if(do_downdates){
           delete_start = delete_end;
@@ -239,10 +239,8 @@ Rcpp::List roll_cpp(
       }
     }
 
-    if(!have_warned and sample_size < too_low){
-      have_warned = true;
-      Rcpp::warning("low sample size relative to number of parameters");
-    }
+    if(!do_warn and sample_size < too_low)
+      do_warn = true;
 
     // compute X^-T X = X^T y
     int coef_start = this_grp_start * p;
@@ -302,6 +300,13 @@ Rcpp::List roll_cpp(
         one_step_forecasts[next_i] =
           dot(&out[coef_start], &X_T[next_i * p], p);
     }
+  }
+
+  if(do_warn){
+    /* see https://stackoverflow.com/a/24557819/5861244 and
+     * github.com/boennecd/rollRegres/issues/2 */
+    Rcpp::Function warning("warning");
+    warning("low sample size relative to number of parameters");
   }
 
   Rcpp::List out_list;

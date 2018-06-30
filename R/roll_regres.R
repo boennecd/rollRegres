@@ -80,7 +80,8 @@ roll_regres <- function(
 
   # find results
   out <- roll_regres.fit(
-    x = x, y = y, width = width, do_compute = do_compute, grp = grp)
+    x = x, y = y, width = width, do_compute = do_compute, grp = grp,
+    do_downdates = do_downdates)
 
   # add contrasts as an attribuate
   attr(out, "terms") <- attr(x, "contrasts")

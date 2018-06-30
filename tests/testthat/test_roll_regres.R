@@ -83,4 +83,25 @@ test_that("`roll_regres` gives the same as `roll_regres.fit` with `do_compute` a
     roll_regres.fit(X, y, 20L, do_compute = do_comp),
     roll_regres(y ~ X1 + X2, df, 20L, do_compute = do_comp),
     check.attributes = FALSE)
+
+  # see github.com/boennecd/rollRegres/issues/1
+  expect_equal(
+    roll_regres.fit(X, y, 20L, do_compute = do_comp, do_downdates = FALSE),
+    roll_regres(y ~ X1 + X2, df, 20L, do_compute = do_comp,
+                do_downdates = FALSE),
+    check.attributes = FALSE)
+})
+
+test_that("`roll_regres.fit` post warning when low p compared to n", {
+  # see github.com/boennecd/rollRegres/issues/2
+  library(rollRegres)
+  x <- matrix(rnorm(4 * 20), ncol = 4)
+  y <- rnorm(20)
+
+  expect_warning(
+    roll_regres.fit(x, y, width = 11L),
+    "low sample size relative to number of parameters")
+
+  # should have no warning
+  roll_regres.fit(x, y, width = 12L)
 })
