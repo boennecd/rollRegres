@@ -18,3 +18,12 @@
 
 ## R CMD check results
 No errors and only the note about `New submission`
+
+## Resubmission
+This is a resubmission. In this version I have:
+
+* Changed the description. I have added a reference as Swetlana Herbrandt
+  requested. 
+* Fix these two bugs: 
+  https://github.com/boennecd/rollRegres/issues/1 and 
+  https://github.com/boennecd/rollRegres/issues/2 

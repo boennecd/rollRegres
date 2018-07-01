@@ -5,7 +5,7 @@ Version: 0.1.0
 Authors@R: person("Benjamin", "Christoffersen", 
                   email = "boennecd@gmail.com", 
                   role = c("cre", "aut"))
-Description: Methods for fast rolling and expanding linear regression models.
+Description: Methods for fast rolling and expanding linear regression models. That is, series of linear regression models estimated on either an expanding window of data or a moving window of data. The methods use rank-one updates and downdates of the upper triangular matrix from a QR decomposition (see J. J. Dongarra, C. B. Moler, J. R. Bunch, and G. W. Stewart (1979) <doi:10.1137/1.9781611971811>).
 Copyright: Jack Dongarra, Jim Bunch, Cleve Moler, and Gilbert Stewart due to the LINPACK routines `dchdd` and `dchud`.
 License: GPL-2
 Encoding: UTF-8
