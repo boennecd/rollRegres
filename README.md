@@ -3,7 +3,7 @@
 [![CRAN RStudio mirror downloads](http://cranlogs.r-pkg.org/badges/rollRegres)](https://github.com/boennecd/rollRegres)
 
 # rollRegres
-This package contains functions for fast fast rolling and expanding linear 
+This package contains functions for fast rolling and expanding linear 
 regression models. You can install the package from Github by calling
 
 ```r
