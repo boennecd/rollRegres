@@ -4,7 +4,13 @@
 
 # rollRegres
 This package contains functions for fast rolling and expanding linear 
-regression models. You can install the package from Github by calling
+regression models. You can install the package from CRAN by calling
+
+```r
+install.packages("rollRegres")
+```
+
+or from Github by calling
 
 ```r
 devtools::install_github("boennecd/rollRegres", upgrade_dependencies = FALSE, 
