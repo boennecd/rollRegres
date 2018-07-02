@@ -35,6 +35,7 @@ roll_regress_R <- function(X, y, width){
   
   dummy_1 <- matrix(0.)
   dummy_2 <- numeric(p)
+  dummy_3 <- numeric(p)
 
   is_first <- TRUE
   for(i in width:n){
@@ -53,11 +54,11 @@ roll_regress_R <- function(X, y, width){
 
       # update R 
       rollRegres:::dchud_wrap(
-        R, p, p, x_new, dummy_1, 0L, 0L, 0., 0., dummy_2, dummy_2)
+        R, p, p, x_new, dummy_1, 0L, 0L, 0., 0., dummy_2, dummy_3)
 
       # downdate R
       rollRegres:::dchdd_wrap(
-        R, p, p, x_old, dummy_1, 0L, 0L, 0., 0., dummy_2, dummy_2, 
+        R, p, p, x_old, dummy_1, 0L, 0L, 0., 0., dummy_2, dummy_3, 
         integer(1))
 
       # update XtY

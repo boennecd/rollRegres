@@ -134,7 +134,9 @@ roll_regres.fit <- function(
   # checks
   assert_matrix(x, any.missing = FALSE)
   assert_numeric(y, finite = TRUE, any.missing = FALSE, len = nrow(x))
-  assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
+  if(!is.null(grp))
+    assert_int(width, upper = nrow(x)) else
+      assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
   assert_character(do_compute, any.missing = FALSE)
   if(!all(do_compute %in% c("sigmas", "r.squareds", "1_step_forecasts")))
     stop(sQuote(do_compute), " contains elements which are not implemented")
