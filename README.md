@@ -1,6 +1,6 @@
 [![Build Status on Travis](https://travis-ci.org/boennecd/rollRegres.svg?branch=master,osx)](https://travis-ci.org/boennecd/rollRegres) 
-[![](https://www.r-pkg.org/badges/version/rollRegres)](https://www.r-pkg.org/badges/version/rollRegres)
-[![CRAN RStudio mirror downloads](http://cranlogs.r-pkg.org/badges/rollRegres)](https://github.com/boennecd/rollRegres)
+[![](https://www.r-pkg.org/badges/version/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
+[![CRAN RStudio mirror downloads](http://cranlogs.r-pkg.org/badges/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
 
 # rollRegres
 This package contains functions for fast rolling and expanding linear 
