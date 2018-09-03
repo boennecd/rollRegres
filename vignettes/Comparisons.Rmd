@@ -257,6 +257,7 @@ pck_out <- roll_regres.fit(
 #####
 # assign R-version
 R_func <- function(X, y, width, grp){
+  grp <- grp + 1L - min(grp)
   u_grp = unique(grp)
   n <- nrow(X)
   p <- ncol(X)
@@ -335,8 +336,8 @@ R_func <- function(X, y, width, grp, downdate, min_obs){
   n <- nrow(X)
   p <- ncol(X)
   out <- matrix(NA_real_, n, p)
-  sigmas             <- rep(NA_real_, n)
-  r.squared          <- rep(NA_real_, n)
+  sigmas    <- rep(NA_real_, n)
+  r.squared <- rep(NA_real_, n)
 
   start_val <- max(which(u_grp <= width))
   for(g in u_grp[start_val:length(u_grp)]){
@@ -366,9 +367,9 @@ R_out <- R_func(X, y, width = 12L, downdate = TRUE, grp = month,
 
 #####
 # gives the same
-stopifnot(isTRUE(all.equal(R_out$coef              , pck_out$coefs)))
-stopifnot(isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)))
-stopifnot(isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)))
+stopifnot(isTRUE(all.equal(R_out$coef     , pck_out$coefs)))
+stopifnot(isTRUE(all.equal(R_out$sigmas   , pck_out$sigmas)))
+stopifnot(isTRUE(all.equal(R_out$r.squared, pck_out$r.squared)))
 ```
 
 # Session info
