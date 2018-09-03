@@ -46,8 +46,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // roll_cpp
-Rcpp::List roll_cpp(const arma::mat& X, const arma::vec& Y, const int window, const bool do_compute_R_sqs, const bool do_compute_sigmas, const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp, const bool do_downdates);
-RcppExport SEXP _rollRegres_roll_cpp(SEXP XSEXP, SEXP YSEXP, SEXP windowSEXP, SEXP do_compute_R_sqsSEXP, SEXP do_compute_sigmasSEXP, SEXP do_1_step_forecastsSEXP, SEXP grpSEXP, SEXP use_grpSEXP, SEXP do_downdatesSEXP) {
+Rcpp::List roll_cpp(const arma::mat& X, const arma::vec& Y, const int window, const bool do_compute_R_sqs, const bool do_compute_sigmas, const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp, const bool do_downdates, const bool use_min_obs, const int min_obs);
+RcppExport SEXP _rollRegres_roll_cpp(SEXP XSEXP, SEXP YSEXP, SEXP windowSEXP, SEXP do_compute_R_sqsSEXP, SEXP do_compute_sigmasSEXP, SEXP do_1_step_forecastsSEXP, SEXP grpSEXP, SEXP use_grpSEXP, SEXP do_downdatesSEXP, SEXP use_min_obsSEXP, SEXP min_obsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -60,7 +60,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::ivec >::type grp(grpSEXP);
     Rcpp::traits::input_parameter< const bool >::type use_grp(use_grpSEXP);
     Rcpp::traits::input_parameter< const bool >::type do_downdates(do_downdatesSEXP);
-    rcpp_result_gen = Rcpp::wrap(roll_cpp(X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, grp, use_grp, do_downdates));
+    Rcpp::traits::input_parameter< const bool >::type use_min_obs(use_min_obsSEXP);
+    Rcpp::traits::input_parameter< const int >::type min_obs(min_obsSEXP);
+    rcpp_result_gen = Rcpp::wrap(roll_cpp(X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, grp, use_grp, do_downdates, use_min_obs, min_obs));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -81,7 +83,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_rollRegres_dchud_wrap", (DL_FUNC) &_rollRegres_dchud_wrap, 11},
     {"_rollRegres_dchdd_wrap", (DL_FUNC) &_rollRegres_dchdd_wrap, 12},
-    {"_rollRegres_roll_cpp", (DL_FUNC) &_rollRegres_roll_cpp, 9},
+    {"_rollRegres_roll_cpp", (DL_FUNC) &_rollRegres_roll_cpp, 11},
     {"_rollRegres_chunk", (DL_FUNC) &_rollRegres_chunk, 3},
     {NULL, NULL, 0}
 };

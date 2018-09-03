@@ -291,6 +291,10 @@ test_that("'.find_grps' gives the same as a simpler R-version", {
     }
 
     can_comp <- out >= min_obs
+
+    # we first want to set values after a full window
+    can_comp[grp - min(grp) < width - 1L] <- FALSE
+
     need_restart <- c(FALSE, head(can_comp, -1) != can_comp[-1] & can_comp[-1])
 
     chunk_grp <- cumsum(need_restart) * can_comp
@@ -312,7 +316,7 @@ test_that("'.find_grps' gives the same as a simpler R-version", {
 
   expect_equal(
     .find_chunks(x, wth, min_obs),
-    list(grp_idx_start = 1L, grp_idx_stop = 1000L, has_value_start = 9L))
+    list(grp_idx_start = 1L, grp_idx_stop = 1000L, has_value_start = 17L))
 
   set.seed(36385244)
   for(i in 1:25){

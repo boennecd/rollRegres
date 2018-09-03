@@ -5,7 +5,8 @@
 \title{Fitting Rolling and Expanding Linear Models}
 \usage{
 roll_regres(formula, data, width, contrasts = NULL,
-  do_compute = character(), grp = NULL, do_downdates = TRUE)
+  do_compute = character(), grp = NULL, do_downdates = TRUE,
+  min_obs = NULL)
 }
 \arguments{
 \item{formula}{as \code{formula} in \code{\link{lm}}.}
@@ -27,6 +28,10 @@ over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
 
 \item{do_downdates}{logical which is \code{TRUE} if you want a rolling
 window regressions. Otherwise, an expanding window is used.}
+
+\item{min_obs}{positive integer with minimum number of observation that are
+required in a window. Useful if there are gaps in \code{grp} or unequal
+number of observations for each \code{grp}.}
 }
 \value{
 List with vector and matrices with the computed output. See the

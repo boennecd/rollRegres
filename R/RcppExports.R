@@ -11,8 +11,8 @@ dchdd_wrap <- function(r, ldr, p, x, z, ldz, nz, y, rho, c, s, info) {
 
 #' @import Rcpp
 #' @useDynLib rollRegres, .registration = TRUE
-roll_cpp <- function(X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, grp, use_grp, do_downdates) {
-    .Call(`_rollRegres_roll_cpp`, X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, grp, use_grp, do_downdates)
+roll_cpp <- function(X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, grp, use_grp, do_downdates, use_min_obs = FALSE, min_obs = 0L) {
+    .Call(`_rollRegres_roll_cpp`, X, Y, window, do_compute_R_sqs, do_compute_sigmas, do_1_step_forecasts, grp, use_grp, do_downdates, use_min_obs, min_obs)
 }
 
 .find_chunks <- function(grp, width, min_obs) {

@@ -44,7 +44,10 @@ inline double dot(const double *x, const double *y, const unsigned int p){
 }
 
 inline int find_stard_end(
-    int &start, int &end, const int delta_grp, const int *grp, const int n){
+    int &start, int &end, const int delta_grp, const int *grp, const int n,
+    /* additional arguments if stopping can also be caused by a sufficient
+     * number of observations */
+    const bool use_min_obs = false, const int min_obs = 0L, int nobs = 1L){
   if(start == n)
     Rcpp::stop("Invalid 'start' and 'n'");
 
@@ -55,8 +58,9 @@ inline int find_stard_end(
 
   int start_grp = *(grp + start), next_grp = start_grp, old_grp, length = 0L;
 
+  bool do_stop = false;
   do {
-    ++length;
+    ++length; ++nobs;
 
     if(end == n - 1L){ /* reached the end */
       ++end;
@@ -67,7 +71,11 @@ inline int find_stard_end(
     next_grp = *(grp + ++end);
     if(old_grp > next_grp)
       Rcpp::stop("'grp' is not sorted");
-  } while(next_grp - start_grp < delta_grp);
+
+    do_stop = next_grp - start_grp >= delta_grp;
+    if(use_min_obs && next_grp != old_grp && nobs >= min_obs)
+      do_stop = true;
+  } while(!do_stop);
 
   return length;
 }
@@ -79,7 +87,8 @@ Rcpp::List roll_cpp(
     const arma::mat &X, const arma::vec &Y, const int window,
     const bool do_compute_R_sqs,
     const bool do_compute_sigmas, const bool do_1_step_forecasts,
-    arma::ivec grp, const bool use_grp, const bool do_downdates){
+    arma::ivec grp, const bool use_grp, const bool do_downdates,
+    const bool use_min_obs = false, const int min_obs = 0L){
   int n = X.n_rows, p = X.n_cols;
   const int p_cnst = p;
   arma::mat X_T = X.t();
@@ -128,7 +137,7 @@ Rcpp::List roll_cpp(
     if(is_first){ // setup QR decomposition
       if(use_grp){
         sample_size += find_stard_end(
-          start         , end, window, grp.begin(), n);
+          start         , end, window, grp.begin(), n, use_min_obs, min_obs);
         /* need to find `this_grp_start` */
         int last_grp = grp[end - 1L];
         this_grp_start = end - 1L;
@@ -347,10 +356,12 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
 
   const int *g = grp.begin();
   /* hopefully not a used group... */
-  int cur_grp = std::numeric_limits<arma::sword>::min();
+  int cur_grp = std::numeric_limits<int>::min(), first_grp = *grp.begin();
 
+  bool has_window_length = false;
   for(unsigned int i = 0; i < grp.n_elem; ++g, ++i, ++nobs){
     bool is_new_grp = *g != cur_grp;
+    has_window_length = has_window_length or *g - first_grp >= width - 1L;
     cur_grp = *g;
     if(is_new_grp){
       grp_start = i;
@@ -368,7 +379,7 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
 
     bool is_last = i == grp.n_elem - 1L,
       is_last_in_group = is_last || *g != *(g + 1L);
-    if(!is_last_in_group)
+    if(!is_last_in_group or !has_window_length)
       continue;
 
     if(is_new_chunk && nobs >= min_obs){
