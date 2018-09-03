@@ -1,0 +1,3 @@
+add the option to get the number of values in a given window
+add a `min_width` argument for the minimum width of a window
+handle missing values
