@@ -94,7 +94,6 @@ test_that("`roll_regres` gives the same as `roll_regres.fit` with `do_compute` a
 
 test_that("`roll_regres.fit` post warning when low p compared to n", {
   # see github.com/boennecd/rollRegres/issues/2
-  library(rollRegres)
   x <- matrix(rnorm(4 * 20), ncol = 4)
   y <- rnorm(20)
 
@@ -105,3 +104,4 @@ test_that("`roll_regres.fit` post warning when low p compared to n", {
   # should have no warning
   roll_regres.fit(x, y, width = 12L)
 })
+

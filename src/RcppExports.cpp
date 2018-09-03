@@ -46,14 +46,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // roll_cpp
-Rcpp::List roll_cpp(const arma::mat& X, const arma::vec& Y, int window, const bool do_compute_R_sqs, const bool do_compute_sigmas, const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp, const bool do_downdates);
+Rcpp::List roll_cpp(const arma::mat& X, const arma::vec& Y, const int window, const bool do_compute_R_sqs, const bool do_compute_sigmas, const bool do_1_step_forecasts, arma::ivec grp, const bool use_grp, const bool do_downdates);
 RcppExport SEXP _rollRegres_roll_cpp(SEXP XSEXP, SEXP YSEXP, SEXP windowSEXP, SEXP do_compute_R_sqsSEXP, SEXP do_compute_sigmasSEXP, SEXP do_1_step_forecastsSEXP, SEXP grpSEXP, SEXP use_grpSEXP, SEXP do_downdatesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
-    Rcpp::traits::input_parameter< int >::type window(windowSEXP);
+    Rcpp::traits::input_parameter< const int >::type window(windowSEXP);
     Rcpp::traits::input_parameter< const bool >::type do_compute_R_sqs(do_compute_R_sqsSEXP);
     Rcpp::traits::input_parameter< const bool >::type do_compute_sigmas(do_compute_sigmasSEXP);
     Rcpp::traits::input_parameter< const bool >::type do_1_step_forecasts(do_1_step_forecastsSEXP);
@@ -64,11 +64,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// chunk
+Rcpp::List chunk(const arma::ivec grp, const unsigned int width, const unsigned int min_obs);
+RcppExport SEXP _rollRegres_chunk(SEXP grpSEXP, SEXP widthSEXP, SEXP min_obsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::ivec >::type grp(grpSEXP);
+    Rcpp::traits::input_parameter< const unsigned int >::type width(widthSEXP);
+    Rcpp::traits::input_parameter< const unsigned int >::type min_obs(min_obsSEXP);
+    rcpp_result_gen = Rcpp::wrap(chunk(grp, width, min_obs));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_rollRegres_dchud_wrap", (DL_FUNC) &_rollRegres_dchud_wrap, 11},
     {"_rollRegres_dchdd_wrap", (DL_FUNC) &_rollRegres_dchdd_wrap, 12},
     {"_rollRegres_roll_cpp", (DL_FUNC) &_rollRegres_roll_cpp, 9},
+    {"_rollRegres_chunk", (DL_FUNC) &_rollRegres_chunk, 3},
     {NULL, NULL, 0}
 };
 
