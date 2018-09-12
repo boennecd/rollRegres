@@ -177,5 +177,17 @@ test_that("Bug found doing development is fixed", {
   expect_equal(out$coefs, out_R$coef)
   expect_equal(out$sigmas, out_R$sigmas)
   expect_equal(out$r.squareds, out_R$r.squared)
-})
 
+  dat <- readRDS("test_ex_grp1.RDS")
+  out <- roll_regres.fit(
+    x = cbind(1, dat$x), y = dat$y, width = 12L, do_downdates = TRUE,
+    min_obs = 20L * 3L, do_compute = c("sigmas", "r.squareds"), grp = dat$grp)
+
+  out_R <- roll_regress_R_for_loop(
+    X = cbind(1, dat$x), y = dat$y, width = 12L,     downdate = TRUE,
+    min_obs = 20L * 3L                                        , grp = dat$grp)
+
+  expect_equal(out$coefs, out_R$coef)
+  expect_equal(out$sigmas, out_R$sigmas)
+  expect_equal(out$r.squareds, out_R$r.squared)
+})

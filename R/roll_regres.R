@@ -223,15 +223,17 @@ roll_regres.fit <- function(
       min_obs, use_min_obs)
     o <- eval(cl, environment())
 
-    # only keep the rows we need to insert into
+    # check and only keep the rows we need to insert into
+    idx_out <- has_value_start:grp_idx_stop
     keep <- complete.cases(o$coefs)
+    stopifnot(sum(keep) >= length(idx_out), all(keep[1:sum(!keep)] == FALSE))
+    keep[seq_len(nrow(o$coefs) - length(idx_out))] <- FALSE
     o$coefs <- o$coefs[keep, , drop = FALSE]
     other <- names(o) != "coefs"
     o[other] <- lapply(o[other], "[", keep)
 
     # return with the index to insert at
-    idx_out <- has_value_start:grp_idx_stop
-    list(out = o, idx = intersect(idx[keep], idx_out))
+    list(out = o, idx = idx_out)
   }, grp_idx_stop = chunks$grp_idx_stop, grp_idx_start = chunks$grp_idx_start,
   has_value_start = chunks$has_value_start, use_min_obs = use_min_obs,
   SIMPLIFY = FALSE)
