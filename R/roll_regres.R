@@ -186,8 +186,11 @@ roll_regres.fit <- function(
 
   # find chunks
   chunks <- .find_chunks(grp, width, min_obs)
-  if(length(chunks$grp_idx_start) == 0L)
-    stop("No windows with a sufficient number of observations")
+  if(length(chunks$grp_idx_start) == 0L){
+    warning("No windows with a sufficient number of observations. Returning ",
+            sQuote("NULL"))
+    return(NULL)
+  }
 
   if(length(chunks$grp_idx_start) == 1L && chunks$grp_idx_start == 1L &&
      chunks$grp_idx_stop == nrow(x)){

@@ -361,7 +361,7 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
   bool has_window_length = false;
   for(unsigned int i = 0; i < grp.n_elem; ++g, ++i, ++nobs){
     bool is_new_grp = *g != cur_grp;
-    has_window_length = has_window_length or *g - first_grp >= width - 1L;
+    has_window_length = has_window_length or *g - first_grp >= (int)width - 1L;
     cur_grp = *g;
     if(is_new_grp){
       grp_start = i;
