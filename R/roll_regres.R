@@ -152,6 +152,8 @@ roll_regres.fit <- function(
 
   } else {
     assert_integer(grp, null.ok = FALSE, sorted = TRUE, len = nrow(x))
+    if(any(diff(grp) < 0))
+      stop(sQuote("grp"), " is not increasing. Data needs to be sorted")
     use_grp <- TRUE
 
   }
@@ -205,7 +207,13 @@ roll_regres.fit <- function(
 
   # compute for each chunk
   use_min_obs <- logical(length(chunks$grp_idx_start))
-  use_min_obs[-1] <- TRUE
+  # we may have to also set the first index to false in the following case.
+  # `grp` has values 1 3 4 and width is 2. The first group should be 3 4
+  # with start index to and end index 4. The first window though only has
+  # length 4 - 3 + 1 = 2 but we have seen a 1 before and 4 - 1 >= the `width`
+  if(length(use_min_obs) > 1L)
+    use_min_obs[-1] <- TRUE
+  use_min_obs[1] <- grp[chunks$has_value_start[1]] - grp[1L] >= width
   out <- mapply(function(grp_idx_start, grp_idx_stop, has_value_start,
                          use_min_obs){
     # compute
@@ -222,7 +230,8 @@ roll_regres.fit <- function(
     o[other] <- lapply(o[other], "[", keep)
 
     # return with the index to insert at
-    list(out = o, idx = has_value_start:grp_idx_stop)
+    idx_out <- has_value_start:grp_idx_stop
+    list(out = o, idx = intersect(idx[keep], idx_out))
   }, grp_idx_stop = chunks$grp_idx_stop, grp_idx_start = chunks$grp_idx_start,
   has_value_start = chunks$has_value_start, use_min_obs = use_min_obs,
   SIMPLIFY = FALSE)

@@ -193,9 +193,10 @@ test_that("`roll_cpp` works in n > 1 length block case with and without downdati
     0.863, -2.713, -0.429, 0.865, -0.688, 0.498, 0.607, 0.068, 1.671,
     -0.928, 0.925, -0.417, 0.436, 0.554, -2.642, -0.141, 0.486, 0.51,
     -0.914, -1.104, -0.114)
-  wdth = 10L
+  wdth = 9L
 
   roll_regress_R_for_loop <- function(X, y, width, grp, downdate){
+    grp <- grp + 1L - min(grp)
     u_grp = unique(grp)
     n <- nrow(X)
     p <- ncol(X)
@@ -204,7 +205,7 @@ test_that("`roll_cpp` works in n > 1 length block case with and without downdati
     r.squared          <- rep(NA_real_, n)
     one_step_forecasts <- rep(NA_real_, n)
 
-    start_val <- max(which(u_grp <= width))
+    start_val <- min(which(u_grp >= width))
     for(g in u_grp[start_val:length(u_grp)]){
       idx <-
         if(downdate)

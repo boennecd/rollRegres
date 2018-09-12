@@ -266,7 +266,7 @@ R_func <- function(X, y, width, grp){
   r.squared          <- rep(NA_real_, n)
   one_step_forecasts <- rep(NA_real_, n)
 
-  start_val <- max(which(u_grp <= width))
+  start_val <- min(which(u_grp >= width))
   for(g in u_grp[start_val:length(u_grp)]){
     idx <- which(grp %in% (g - width + 1L):g)
     i <- which(grp == g)
@@ -339,7 +339,7 @@ R_func <- function(X, y, width, grp, downdate, min_obs){
   sigmas    <- rep(NA_real_, n)
   r.squared <- rep(NA_real_, n)
 
-  start_val <- max(which(u_grp <= width))
+  start_val <- min(which(u_grp >= width))
   for(g in u_grp[start_val:length(u_grp)]){
     idx <-
       if(downdate)
