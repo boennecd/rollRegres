@@ -8,15 +8,16 @@
 
 static constexpr int i_one = 1L, i_zero = 0L;
 static constexpr double d_one = 1;
+static constexpr char C_L = 'L', C_U = 'U', C_T = 'T', C_N = 'N';
 
 extern "C" {
   void F77_NAME(dchud)(
-      double*, const int*, const int*, double*, double*, const int*,
+      double*, const int*, const int*, const double*, double*, const int*,
       const int*, double*, double*,
       double*, double*);
 
   void F77_NAME(dchdd)(
-      double*, const int*, const int*, double*, double*, const int*,
+      double*, const int*, const int*, const double*, double*, const int*,
       const int*, double*, double*, double*, double*, int*);
 }
 
@@ -194,6 +195,172 @@ public:
   }
 };
 
+/* class to perform the estimation */
+class roll_cpp_worker {
+  using iptr = std::unique_ptr<int[]>;
+  using dptr = std::unique_ptr<double[]>;
+
+  const arma::mat &X, X_T = X.t();
+  const arma::vec &Y;
+  const int n = X.n_rows;
+  /* only non-const due to linpack definition */
+  int p = X.n_cols, ld_X_qr;
+
+  iptr jpvt  = iptr(new int[p]);
+  dptr qraux = dptr(new double[p]),
+       XtY   = dptr(new double[p]),
+       s     = dptr(new double[p]),
+       c     = dptr(new double[p]),
+       X_qr;
+
+  void check_start_end
+    (const std::size_t start, const std::size_t end)
+  {
+#ifdef ROLL_DEBUG
+    if(start >= end or (int)end > n)
+      throw std::invalid_argument("Invalid 'start' and/or 'stop'");
+#endif
+  }
+
+  const double *last_coef = nullptr;
+
+public:
+  roll_cpp_worker
+  (const arma::mat &X, const arma::vec &Y , const std::size_t start,
+   const std::size_t end):
+  X(X), Y(Y), ld_X_qr(end - start)
+  {
+    check_start_end(start, end);
+
+    /* compute the cholesky decomposition. First, we need to setup a few
+     * objects */
+    for(int i = 0; i < p; ++i){
+      jpvt[i] = 0;
+      XtY[i] = 0;
+    }
+
+    int job = 0; /* do not pivot */
+    double work; /* not referenced when not pivoting */
+
+    // copy values
+    X_qr.reset(new double[p * ld_X_qr]);
+    for(int j = 0; j < p; ++j){ /* for each covaraite */
+     for(unsigned int k = start; k < end; ++k){ /* for each observation */
+        X_qr[k + j * ld_X_qr] = X[k + j * n];
+        XtY[j] += Y[k] * X[k + j * n];
+      }
+    }
+
+    /* compute QR and get get upper triangular matrix, R, in the QR
+     * decomposition. See `qr.default`, `qr.R`, `r-source/src/appl/dqrdc2.f`
+     * We use `dqrdc` instead where we can select not to perform pivoting.
+     * NOTICE: no rank check
+     */
+    dqrdc(&X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
+          &work, &job);
+  }
+
+  /* update the present decomposition */
+  void update
+      (const std::size_t start, const std::size_t end)
+  {
+    check_start_end(start, end);
+
+    double ddum;
+    const double *X_t_p;
+    unsigned int k;
+
+    for(k = start, X_t_p = X_T.begin() + start * p;
+        k < end; ++k, X_t_p +=p){
+      F77_CALL(dchud)(
+          &X_qr[0], &ld_X_qr, &p, X_t_p,
+          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
+
+      /* update X^T y */
+      for(int j = 0; j < p; ++j)
+        XtY[j] += Y[k] * *(X_t_p + j);
+    }
+  }
+
+  /* downdate the present decomposition */
+  void downdate
+  (const std::size_t start, const std::size_t end)
+  {
+    check_start_end(start, end);
+
+    double ddum;
+    const double *X_t_p;
+    unsigned int k;
+    int info;
+
+    for(k = start, X_t_p = X_T.begin() + start * p; k < end; ++k, X_t_p += p){
+      F77_CALL(dchdd)(
+          &X_qr[0], &ld_X_qr, &p, X_t_p,
+          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
+
+      if(info != 0)
+        throw std::runtime_error(
+            "'dchdd' failed with code " + std::to_string(info));
+
+      // downdate X^T y
+      for(int j = 0; j < p; ++j)
+        XtY[j] -= Y[k] * *(X_t_p + j);
+    }
+  }
+
+  /* set the coefficients to the passed pointer. Assumes that sufficient memory
+   * is allocated. A pointer to the memory will be stored and may be used in
+   * other member functions. */
+  void set_coef(double *out){
+    last_coef = out;
+
+    /* copy XtY */
+    for(int j = 0; j < p; ++j)
+      *(out + j) = XtY[j];
+
+    /* solve */
+    auto solve_func = [&](char transpose){
+      dtrsm(
+        &C_L, &C_U, &transpose, &C_N, &p, &i_one, &d_one, &X_qr[0], &ld_X_qr,
+        out, &p);
+    };
+
+    solve_func(C_T);
+    solve_func(C_N);
+  }
+
+  /* returns the sum of squared errors. May use a stored pointer to the last
+   * computed coefficients */
+  double get_ss(const std::size_t start, const std::size_t end){
+#ifdef ROLL_DEBUG
+    if(!last_coef)
+      throw std::logic_error("'get_ss' called before 'set_coef'");
+#endif
+
+    double ss_reg = 0.;
+    const double *X_t_p = X_T.memptr() + start * p;
+    for(unsigned int k = start; k < end; ++k, X_t_p += p){
+      const double res = Y[k] - dot(last_coef, X_t_p, p);
+      ss_reg += res * res;
+    }
+
+    return ss_reg;
+  }
+
+  /* predicts the mean of a new outcome. May use a stored pointer to the last
+   * computed coefficients */
+  double predict(const std::size_t i_new){
+#ifdef ROLL_DEBUG
+    if(!last_coef)
+      throw std::logic_error("'predict' called before 'set_coef'");
+    if((int)i_new >= n)
+      throw std::invalid_argument("Invalid 'i_new'");
+#endif
+    return dot(last_coef, X_T.memptr() + i_new * p, p);
+  }
+};
+
+
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
 // [[Rcpp::export]]
@@ -203,11 +370,7 @@ Rcpp::List roll_cpp(
     const bool do_compute_sigmas, const bool do_1_step_forecasts,
     arma::ivec grp, const bool use_grp, const bool do_downdates,
     const bool use_min_obs = false, const int min_obs = 0L){
-  const unsigned int n = X.n_rows;
-  int p = X.n_cols;
-  const int p_cnst = p;
-  arma::mat X_T = X.t();
-  const std::size_t too_low = p * 3L;
+  const std::size_t n = X.n_rows, p = X.n_cols, too_low = p * 3L;
 
   /* initalize output */
   arma::mat out(p, n); // notice other order
@@ -228,33 +391,23 @@ Rcpp::List roll_cpp(
 
   /* define intermediates */
   bool is_first = true, do_warn = false;
-  double ddum, y_bar = 0., ss_tot = 0.;
+  double y_bar = 0., ss_tot = 0.;
   unsigned int t = 0L;
-  std::unique_ptr<int    []> jpvt (new int[p]   );
-  std::unique_ptr<double []> qraux(new double[p]);
-  std::unique_ptr<double []> X_qr;
-  int ld_X_qr;
-  std::unique_ptr<double []> XtY  (new double[p]);
-  std::unique_ptr<double []> c    (new double[p]);
-  std::unique_ptr<double []> s    (new double[p]);
-  double *X_T_begin = X_T.begin();
 
   roll_cpp_indices idxs = ([&]{
     const arma::ivec *ptr = use_grp ? &grp : nullptr;
     return roll_cpp_indices(n, window, ptr, use_min_obs, min_obs);
   })();
 
-  for(int i = 0; i < p; ++i){
-    jpvt[i] = 0;
-    XtY[i] = 0;
-  }
   std::size_t
     delete_start = do_downdates ? -1L : 0L, delete_end = 0L,
     sample_size = 0L, this_grp_start = -1L;
 
+  std::unique_ptr<roll_cpp_worker> worker;
+
   /* compute values */
   for(unsigned int i = 0L; i < n; i = idxs.end()){
-    if(is_first){ // setup QR decomposition
+    if(is_first){ // setup worker
       if(use_grp){
         /* need to find `this_grp_start` */
         int last_grp = grp[idxs.end() - 1L];
@@ -264,29 +417,11 @@ Rcpp::List roll_cpp(
 
       } else
         this_grp_start = idxs.end() - 1L;
+      sample_size = idxs.end() - idxs.start();
 
       is_first = false;
-      int job = 0; /* do not pivot */
-      double work; /* not referenced when not pivoting */
 
-      // copy values
-      sample_size = idxs.end() - idxs.start();
-      ld_X_qr = sample_size;
-      X_qr.reset(new double[p * ld_X_qr]);
-      for(int j = 0; j < p; ++j){ /* for each covaraite */
-        for(unsigned int k = idxs.start(); k < idxs.end(); ++k){ /* for each observation */
-          X_qr[k + j * ld_X_qr] = X[k + j * n];
-          XtY[j] += Y[k] * X[k + j * n];
-        }
-      }
-
-      /* compute QR and get get upper triangular matrix, R, in the QR
-       * decomposition see `qr.default`, `qr.R`, `r-source/src/appl/dqrdc2.f`
-       * We use `dqrdc` instead where we can select not to perform pivoting.
-       * NOTICE: no rank check
-       */
-      dqrdc(&X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
-            &work, &job);
+      worker.reset(new roll_cpp_worker(X, Y, idxs.start(), idxs.end()));
 
       if(do_compute_R_sqs)
         while(t < sample_size)
@@ -298,45 +433,22 @@ Rcpp::List roll_cpp(
       this_grp_start = old.end;
       sample_size = idxs.end() - idxs.start();
 
+      /* updates */
+      worker->update(old.end, idxs.end());
+      for(unsigned int k = old.end; k < idxs.end() and do_compute_R_sqs;
+          ++k)
+        update_sse(Y[k], ss_tot, t, y_bar);
+
+      /* downdates */
       if(do_downdates){
         delete_start = old.start.idx;
         delete_end = idxs.start();
-      }
 
-      /* updates */
-      for(unsigned int k = old.end; k < idxs.end(); ++k){
-        int inc_new = k * p;
-        F77_CALL(dchud)(
-            &X_qr[0], &ld_X_qr, &p, X_T_begin + inc_new,
-            &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
+        if(delete_start < delete_end)
+          worker->downdate(delete_start, delete_end);
 
-        /* update X^T y */
-        for(int j = 0; j < p; ++j)
-          XtY[j] += Y[k] * X_T[j + inc_new];
-
-        if(do_compute_R_sqs)
-          update_sse(Y[k], ss_tot, t, y_bar);
-      }
-
-      /* downdates */
-      for(unsigned int k = delete_start; k < delete_end; ++k){
-        int inc_old = k * p;
-        int info;
-        F77_CALL(dchdd)(
-            &X_qr[0], &ld_X_qr, &p, X_T_begin + inc_old,
-            &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
-
-        if(info != 0){
-          std::ostringstream os;
-          os << "'dchdd' failed with code " << info;
-          Rcpp::stop(os.str());
-        }
-
-        // downdate X^T y
-        for(int j = 0; j < p; ++j)
-          XtY[j] -= Y[k] * X_T[j + inc_old];
-
-        if(do_compute_R_sqs)
+        for(unsigned int k = delete_start;
+            k < delete_end and do_compute_R_sqs; ++k)
           downdate_sse(Y[k], ss_tot, t, y_bar);
       }
     }
@@ -344,28 +456,8 @@ Rcpp::List roll_cpp(
     if(!do_warn and sample_size < too_low)
       do_warn = true;
 
-    // compute X^-T X = X^T y
     int coef_start = this_grp_start * p;
-    for(int j = 0; j < p; ++j)
-      out[j + coef_start] = XtY[j];
-
-    /* See `r-source/src/library/base/R/backsolve.R` and
-     * `r-source/src/main/array.c`
-     *
-     * First compute
-     *     T(R) X = B
-     *
-     * then compute
-     *       R Z = X
-     */
-    dtrsm(
-        "L", "U", "T", "N", &p_cnst, &i_one /* Y has one column */, &d_one,
-        &X_qr[0], &ld_X_qr /* LDA */,
-        out.begin() + coef_start, &p_cnst);
-    dtrsm(
-        "L", "U", "N" /*  only difference */, "N", &p_cnst, &i_one, &d_one,
-        &X_qr[0], &ld_X_qr,
-        out.begin() + coef_start, &p_cnst);
+    worker->set_coef(out.memptr() + coef_start);
 
     /* copy values */
     {
@@ -375,32 +467,27 @@ Rcpp::List roll_cpp(
     }
 
     /* compute other values if requested */
-    double ss_reg = 0;
     if(do_compute_R_sqs or do_compute_sigmas){
-      for(unsigned int k = idxs.start(); k < idxs.end(); ++k){
-        const double res = Y[k] - dot(&out[coef_start], &X_T[k * p], p);
-        ss_reg += res * res;
-      }
+      double ss_reg = worker->get_ss(idxs.start(), idxs.end());
 
       if(do_compute_sigmas){
         const double new_sigma = std::sqrt(ss_reg / (sample_size - p));
         for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
           sigmas[k] = new_sigma;
       }
-    }
 
-    if(do_compute_R_sqs){
-      const double new_R_sqs = (ss_tot  - ss_reg) / ss_tot;
-      for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
-        R_sqs[k] = new_R_sqs;
+      if(do_compute_R_sqs){
+        const double new_R_sqs = (ss_tot  - ss_reg) / ss_tot;
+        for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
+          R_sqs[k] = new_R_sqs;
+      }
     }
 
     if(do_1_step_forecasts and idxs.end() < n){
       unsigned int next_i = idxs.end();
       int next_grp = grp[next_i];
       for(; next_i < n and grp[next_i] == next_grp; ++next_i)
-        one_step_forecasts[next_i] =
-          dot(&out[coef_start], &X_T[next_i * p], p);
+        one_step_forecasts[next_i] = worker->predict(next_i);
     }
   }
 
@@ -503,4 +590,3 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
     Rcpp::Named("grp_idx_stop")    = Rcpp::wrap(grp_idx_stop),
     Rcpp::Named("has_value_start") = Rcpp::wrap(has_value_start));
 }
-
