@@ -4,20 +4,25 @@
 #include <memory>
 #include <cstring>
 #include <sstream>
+#include <array>
+
+static constexpr int i_one = 1L, i_zero = 0L;
+static constexpr double d_one = 1;
 
 extern "C" {
   void F77_NAME(dchud)(
-      double*, int*, int*, double*, double*, int*, int*, double*, double*,
+      double*, const int*, const int*, double*, double*, const int*,
+      const int*, double*, double*,
       double*, double*);
 
   void F77_NAME(dchdd)(
-      double*, int*, int*, double*, double*, int*, int*, double*, double*,
-      double*, double*, int*);
+      double*, const int*, const int*, double*, double*, const int*,
+      const int*, double*, double*, double*, double*, int*);
 }
 
 /* see https://stats.stackexchange.com/a/72215/81865 */
 inline double
-  update_sse(const double x, double &sse, int &t, double &x_bar){
+  update_sse(const double x, double &sse, unsigned int &t, double &x_bar){
     t += 1L;
     double e_t = x - x_bar;
     x_bar += e_t / t;
@@ -27,7 +32,7 @@ inline double
 
 /* TODO: assume that the reverse is also stable */
 inline double
-  downdate_sse(const double x, double &sse, int &t, double &x_bar){
+  downdate_sse(const double x, double &sse, unsigned int &t, double &x_bar){
     double e_t = x - x_bar;
     /* TODO: large number minus small number -- likely not good */
     x_bar = (t / (t - 1.)) * x_bar -  x / (t - 1.);
@@ -43,42 +48,151 @@ inline double dot(const double *x, const double *y, const unsigned int p){
   return out;
 }
 
-inline int find_stard_end(
-    int &start, int &end, const int delta_grp, const int *grp, const int n,
-    /* additional arguments if stopping can also be caused by a sufficient
-     * number of observations */
-    const bool use_min_obs = false, const int min_obs = 0L, int nobs = 1L){
-  if(start == n)
-    Rcpp::stop("Invalid 'start' and 'n'");
+/* class to keep track of indices when adding or removing observations */
+class roll_cpp_indices {
+  /* number of observations and window size */
+  const std::size_t n, window;
+  /* optional vector of group id for each observation */
+  const arma::ivec *grp;
+  /* is group indices supplied */
+  const bool has_grp = grp, use_min_obs;
+  /* optional minimum number of observations in first window */
+  const std::size_t min_obs;
 
-  end = start;
-  if(delta_grp <= 0L){
-    return 0L;
-  }
+  /* move end one step. Either in terms of rows or the group id. The first
+   * index is handled as a sepcial case */
+  void move_end(){
+    const bool is_first_call = end_.idx < 1L;
 
-  int start_grp = *(grp + start), next_grp = start_grp, old_grp, length = 0L;
+    if(!has_grp){
+      if(is_first_call)
+        end_.idx = std::min(start_.idx + window, n);
+      else
+        ++end_.idx;
 
-  bool do_stop = false;
-  do {
-    ++length; ++nobs;
-
-    if(end == n - 1L){ /* reached the end */
-      ++end;
-      break;
+      return;
     }
 
-    old_grp = next_grp;
-    next_grp = *(grp + ++end);
-    if(old_grp > next_grp)
-      Rcpp::stop("'grp' is not sorted");
+#ifdef ROLL_DEBUG
+    if(has_grp and (!start_.grp or !end_.grp))
+      throw std::runtime_error("grp not set");
+#endif
 
-    do_stop = next_grp - start_grp >= delta_grp;
-    if(use_min_obs && next_grp != old_grp && nobs >= min_obs)
-      do_stop = true;
-  } while(!do_stop);
+    auto &i = end_.idx;
+    auto &e_grp = end_.grp;
+    const bool use_min_obs_now =
+      /* only done on the first call */
+      use_min_obs and is_first_call;
 
-  return length;
-}
+    do {
+      ++i;
+      ++e_grp;
+#ifdef ROLL_DEBUG
+      if(i < n and *e_grp - *start_.grp < 0L)
+        throw std::runtime_error("groups are not sorted");
+#endif
+    } while(
+      /* not reached the end */
+      i < n and
+      /* the difference between the groups is too small */
+      (is_first_call and *e_grp - *start_.grp  < (int)window) and
+      /* we do not use the minimum number of observations as a criteria or
+       * the minimum number of observations is not reached */
+      (!use_min_obs_now or i - start_.idx < min_obs));
+
+    /* may have to move the end index to the start of next group */
+    while(i < n and *e_grp == *(e_grp - 1L)){
+      ++i;
+      ++e_grp;
+    }
+  }
+
+public:
+  /* struct that contains the current index and optional pointer to group
+   * index */
+  struct index {
+    std::size_t idx;
+    const int *grp;
+
+    operator std::size_t() const {
+      return idx;
+    }
+
+    index(std::size_t idx, int *grp): idx(idx), grp(grp) { }
+    index(std::size_t idx): index(idx, nullptr) { }
+  };
+
+private:
+  /* current start and end index */
+  index start_, end_;
+
+public:
+  const index& start() const {
+    return start_;
+  }
+  const index& end() const {
+    return end_;
+  }
+
+  roll_cpp_indices
+    (const std::size_t n, const std::size_t window, const arma::ivec *grp,
+     const bool use_min_obs, const std::size_t min_obs):
+    n(n), window(window), grp(grp), use_min_obs(use_min_obs), min_obs(min_obs),
+    start_(0L), end_(0L)
+  {
+#ifdef ROLL_DEBUG
+    if(grp and grp->n_elem != n)
+      throw std::invalid_argument("invalid 'grp' size and 'n'");
+#endif
+
+    if(grp)
+      end_.grp = start_.grp = grp->begin();
+
+    move_end();
+  }
+
+  struct old_idx_class {
+    const index start, end;
+  };
+
+  /* move start and end one step and return copy of previous start and end */
+  old_idx_class move(const bool do_move_start){
+#ifdef ROLL_DEBUG
+    if(end_.idx == n)
+      throw std::logic_error("already at end");
+#endif
+
+    old_idx_class out { start_, end_ };
+
+    if(do_move_start){
+      if(has_grp){
+        std::size_t &i   = start_.idx;
+        auto &grp = start_.grp;
+        const int next_grp_min = *end_.grp - window + 1L;
+
+        while (
+            /* have not reached the end*/
+            i < n and
+            /* group have not changed sufficiently */
+            *grp < next_grp_min){
+          ++i;
+          ++grp;
+        }
+
+      } else
+        ++start_.idx;
+
+#ifdef ROLL_DEBUG
+      if(start_.idx >= n)
+        throw std::runtime_error("start is after end index");
+#endif
+    }
+
+    move_end();
+
+    return out;
+  }
+};
 
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
@@ -89,10 +203,11 @@ Rcpp::List roll_cpp(
     const bool do_compute_sigmas, const bool do_1_step_forecasts,
     arma::ivec grp, const bool use_grp, const bool do_downdates,
     const bool use_min_obs = false, const int min_obs = 0L){
-  int n = X.n_rows, p = X.n_cols;
+  const unsigned int n = X.n_rows;
+  int p = X.n_cols;
   const int p_cnst = p;
   arma::mat X_T = X.t();
-  const double too_low = p * 3;
+  const std::size_t too_low = p * 3L;
 
   /* initalize output */
   arma::mat out(p, n); // notice other order
@@ -113,8 +228,8 @@ Rcpp::List roll_cpp(
 
   /* define intermediates */
   bool is_first = true, do_warn = false;
-  double d_one = 1, ddum, y_bar = 0., ss_tot = 0.;
-  int i_one = 1L, i_zero = 0L, t = 0L;
+  double ddum, y_bar = 0., ss_tot = 0.;
+  unsigned int t = 0L;
   std::unique_ptr<int    []> jpvt (new int[p]   );
   std::unique_ptr<double []> qraux(new double[p]);
   std::unique_ptr<double []> X_qr;
@@ -124,49 +239,48 @@ Rcpp::List roll_cpp(
   std::unique_ptr<double []> s    (new double[p]);
   double *X_T_begin = X_T.begin();
 
+  roll_cpp_indices idxs = ([&]{
+    const arma::ivec *ptr = use_grp ? &grp : nullptr;
+    return roll_cpp_indices(n, window, ptr, use_min_obs, min_obs);
+  })();
+
   for(int i = 0; i < p; ++i){
     jpvt[i] = 0;
     XtY[i] = 0;
   }
-  int start = 0, end = 0L,
-    delete_start = (do_downdates) ? -1L : 0L, delete_end = 0L,
+  std::size_t
+    delete_start = do_downdates ? -1L : 0L, delete_end = 0L,
     sample_size = 0L, this_grp_start = -1L;
 
   /* compute values */
-  for(int i = 0L; i < n; i = end){
+  for(unsigned int i = 0L; i < n; i = idxs.end()){
     if(is_first){ // setup QR decomposition
       if(use_grp){
-        sample_size += find_stard_end(
-          start         , end, window, grp.begin(), n, use_min_obs, min_obs);
         /* need to find `this_grp_start` */
-        int last_grp = grp[end - 1L];
-        this_grp_start = end - 1L;
+        int last_grp = grp[idxs.end() - 1L];
+        this_grp_start = idxs.end() - 1L;
         while(grp[this_grp_start - 1L] == last_grp and this_grp_start > 0L)
           --this_grp_start;
 
-      } else {
-        start = 0L;
-        end = window;
-        this_grp_start = end - 1L;
-        sample_size = window;
-
-      }
+      } else
+        this_grp_start = idxs.end() - 1L;
 
       is_first = false;
       int job = 0; /* do not pivot */
       double work; /* not referenced when not pivoting */
 
       // copy values
-      ld_X_qr = end - start;
+      sample_size = idxs.end() - idxs.start();
+      ld_X_qr = sample_size;
       X_qr.reset(new double[p * ld_X_qr]);
       for(int j = 0; j < p; ++j){ /* for each covaraite */
-        for(int k = start; k < end; ++k){ /* for each observation */
+        for(unsigned int k = idxs.start(); k < idxs.end(); ++k){ /* for each observation */
           X_qr[k + j * ld_X_qr] = X[k + j * n];
           XtY[j] += Y[k] * X[k + j * n];
         }
       }
 
-      /* compute qR and get get upper triangular matrix, R, in the QR
+      /* compute QR and get get upper triangular matrix, R, in the QR
        * decomposition see `qr.default`, `qr.R`, `r-source/src/appl/dqrdc2.f`
        * We use `dqrdc` instead where we can select not to perform pivoting.
        * NOTICE: no rank check
@@ -175,44 +289,22 @@ Rcpp::List roll_cpp(
             &work, &job);
 
       if(do_compute_R_sqs)
-        while(t < end - start)
+        while(t < sample_size)
           update_sse(Y[t], ss_tot, t, y_bar);
 
     } else {
       /* find data start and end for both new and old data */
-      if(use_grp){
-        start = end;
-        this_grp_start = start;
-        sample_size += find_stard_end(start, end, 1L , grp.begin(), n);
-        /* E.g., window 10, grp[start] is 15, grp[delete_start] is 3 so we
-         * grp[delete_end] to be at least 6 as we want at most 6-15 so diff
-         * should be between grp[delete_start] and grp[delete_end] should be
-         *    3 = 15 - 3 - 10
-         * or same example with 10, 11, and 0 which yields 1 = 11 - 0 - 10
-         */
-        if(do_downdates){
-          delete_start = delete_end;
-          sample_size -= find_stard_end(
-            delete_start, delete_end,
-            grp[start] - grp[delete_start] - window + 1L,
-            grp.begin(), n);
-        }
+      auto old = idxs.move(do_downdates);
+      this_grp_start = old.end;
+      sample_size = idxs.end() - idxs.start();
 
-      } else {
-        start = end;
-        ++end;
-        ++this_grp_start;
-        if(do_downdates){
-          ++delete_start;
-          ++delete_end;
-
-        } else
-          ++sample_size;
-
+      if(do_downdates){
+        delete_start = old.start.idx;
+        delete_end = idxs.start();
       }
 
       /* updates */
-      for(int k = start; k < end; ++k){
+      for(unsigned int k = old.end; k < idxs.end(); ++k){
         int inc_new = k * p;
         F77_CALL(dchud)(
             &X_qr[0], &ld_X_qr, &p, X_T_begin + inc_new,
@@ -227,7 +319,7 @@ Rcpp::List roll_cpp(
       }
 
       /* downdates */
-      for(int k = delete_start; k < delete_end; ++k){
+      for(unsigned int k = delete_start; k < delete_end; ++k){
         int inc_old = k * p;
         int info;
         F77_CALL(dchdd)(
@@ -278,33 +370,33 @@ Rcpp::List roll_cpp(
     /* copy values */
     {
       double *o = out.begin(), *o_copy = o + coef_start;
-      for(int k = this_grp_start; k < end; ++k)
+      for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
         std::memcpy(o + k * p, o_copy, p * sizeof(double));
     }
 
     /* compute other values if requested */
     double ss_reg = 0;
     if(do_compute_R_sqs or do_compute_sigmas){
-      for(int k = delete_end; k < end; ++k){
-        double res = Y[k] - dot(&out[coef_start], &X_T[k * p], p);
+      for(unsigned int k = idxs.start(); k < idxs.end(); ++k){
+        const double res = Y[k] - dot(&out[coef_start], &X_T[k * p], p);
         ss_reg += res * res;
       }
 
       if(do_compute_sigmas){
-        double new_sigma = std::sqrt(ss_reg / (sample_size - p));
-        for(int k = this_grp_start; k < end; ++k)
+        const double new_sigma = std::sqrt(ss_reg / (sample_size - p));
+        for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
           sigmas[k] = new_sigma;
       }
     }
 
     if(do_compute_R_sqs){
-      double new_R_sqs = (ss_tot  - ss_reg) / ss_tot;
-      for(int k = this_grp_start; k < end; ++k)
+      const double new_R_sqs = (ss_tot  - ss_reg) / ss_tot;
+      for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
         R_sqs[k] = new_R_sqs;
     }
 
-    if(do_1_step_forecasts and end < n){
-      int next_i = end;
+    if(do_1_step_forecasts and idxs.end() < n){
+      unsigned int next_i = idxs.end();
       int next_grp = grp[next_i];
       for(; next_i < n and grp[next_i] == next_grp; ++next_i)
         one_step_forecasts[next_i] =
