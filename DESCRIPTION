@@ -1,7 +1,7 @@
 Package: rollRegres
 Type: Package
 Title: Fast Rolling and Expanding Window Linear Regression
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: person("Benjamin", "Christoffersen", 
                   email = "boennecd@gmail.com", 
                   role = c("cre", "aut"))

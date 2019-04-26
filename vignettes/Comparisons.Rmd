@@ -175,10 +175,11 @@ R_out <- R_func(X, y, 50L)
 
 #####
 # gives the same
-stopifnot(isTRUE(all.equal(R_out$coef              , pck_out$coefs)))
-stopifnot(isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)))
-stopifnot(isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)))
-stopifnot(isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
+stopifnot(
+  isTRUE(all.equal(R_out$coef              , pck_out$coefs)), 
+  isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)), 
+  isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)), 
+  isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
 ```
 
 ## Update in blocks
@@ -243,15 +244,16 @@ R_out <- R_func(X, y, 10L, grp = week)
 
 #####
 # gives the same
-stopifnot(isTRUE(all.equal(R_out$coef              , pck_out$coefs)))
-stopifnot(isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)))
-stopifnot(isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)))
-stopifnot(isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
+stopifnot(
+  isTRUE(all.equal(R_out$coef              , pck_out$coefs)), 
+  isTRUE(all.equal(R_out$sigmas            , pck_out$sigmas)), 
+  isTRUE(all.equal(R_out$r.squared         , pck_out$r.squared)), 
+  isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
 ```
 
 ## Block with minimum required number of observation
 Suppose that we are performing rolling regression on stock data over a yearly 
-window. Further, suppose that there are som gaps in the data where we do not 
+window. Further, suppose that there are some gaps in the data where we do not 
 have data and we require at least 6 months of data. This can be done as follows
 
 ```{r min_obs}
@@ -315,9 +317,10 @@ R_out <- R_func(X, y, width = 12L, downdate = TRUE, grp = month,
 
 #####
 # gives the same
-stopifnot(isTRUE(all.equal(R_out$coef     , pck_out$coefs)))
-stopifnot(isTRUE(all.equal(R_out$sigmas   , pck_out$sigmas)))
-stopifnot(isTRUE(all.equal(R_out$r.squared, pck_out$r.squared)))
+stopifnot(
+  isTRUE(all.equal(R_out$coef     , pck_out$coefs)),
+  isTRUE(all.equal(R_out$sigmas   , pck_out$sigmas)),
+  isTRUE(all.equal(R_out$r.squared, pck_out$r.squared)))
 ```
 
 # Session info
