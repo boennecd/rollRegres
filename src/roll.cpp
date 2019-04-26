@@ -1,5 +1,5 @@
 #include "R_ext/RS.h" /* for e.g., `F77_CALL` macro */
-#include "RcppArmadillo.h"
+#include "arma.h"
 #include "BLAS_LINPACK.h"
 #include <memory>
 #include <cstring>
@@ -249,8 +249,8 @@ class roll_cpp_worker_linpack final : public roll_cpp_worker_base {
     s     = dptr(new double[p]),
     c     = dptr(new double[p]);
 
-  /* sum of squared errors */
-  double ss;
+  /* square root of sum of squared errors */
+  double ss_sqrt;
 
   void check_start_end
   (const std::size_t start, const std::size_t end)
@@ -319,9 +319,10 @@ public:
           "'dqrsl' failed with code " + std::to_string(info));
 
     /* compute ss */
-    ss = 0.;
+    ss_sqrt = 0.;
     for(int i = p; i < ld_X_qr; ++i)
-      ss += *(Q_t_Y.get() + i) * *(Q_t_Y.get() + i);
+      ss_sqrt += *(Q_t_Y.get() + i) * *(Q_t_Y.get() + i);
+    ss_sqrt = std::sqrt(ss_sqrt);
 
     /* store first p elements of Q^\top y */
     {
@@ -337,15 +338,12 @@ public:
 
     const double *X_t_p, *y_p;
     unsigned int k;
-    double norm = std::sqrt(ss);
 
     for(k = start, X_t_p = X_T.begin() + start * p, y_p = Y.memptr() + start;
         k < end; ++k, X_t_p += p, ++y_p)
       F77_CALL(dchud)(
           R.get(), &p, &p, X_t_p,
-          z.get(), &p, &i_one, y_p, &norm, &c[0], &s[0]);
-
-    ss = norm * norm;
+          z.get(), &p, &i_one, y_p, &ss_sqrt, &c[0], &s[0]);
   }
 
   void downdate
@@ -356,20 +354,17 @@ public:
     const double *X_t_p, *y_p;
     unsigned int k;
     int info;
-    double norm = std::sqrt(ss);
 
     for(k = start, X_t_p = X_T.begin() + start * p, y_p = Y.memptr() + start;
         k < end; ++k, X_t_p += p, ++y_p){
       F77_CALL(dchdd)(
           R.get(), &p, &p, X_t_p,
-          z.get(), &p, &i_one, y_p, &norm, &c[0], &s[0], &info);
+          z.get(), &p, &i_one, y_p, &ss_sqrt, &c[0], &s[0], &info);
 
       if(info != 0)
         throw std::runtime_error(
             "'dchdd' failed with code " + std::to_string(info));
     }
-
-    ss = norm * norm;
   }
 
   void set_coef(double *out) override {
@@ -382,12 +377,10 @@ public:
     dtrsm(
       &C_L, &C_U, &C_N, &C_N, &p, &i_one, &d_one, R.get(), &p,
       out, &p);
-
-    arma::vec tmp(out, p, false);
   }
 
   double get_ss(const std::size_t start, const std::size_t end) override {
-    return ss;
+    return ss_sqrt * ss_sqrt;
   }
 
   double predict(const std::size_t i_new) override {
@@ -402,7 +395,7 @@ public:
 };
 
 /* The first implementation I made which stores X^\top y instead of the first
- * p rows of Q^\top y where Q is form the QR decompsotion of the design matrix */
+ * p rows of Q^\top y where Q is from the QR decompsotion of the design matrix */
 class roll_cpp_worker final : public roll_cpp_worker_base {
   using iptr = std::unique_ptr<int[]>;
   using dptr = std::unique_ptr<double[]>;
@@ -570,21 +563,20 @@ Rcpp::List roll_cpp(
   const std::size_t n = X.n_rows, p = X.n_cols, too_low = p * 3L;
 
   /* initalize output */
-  arma::mat out(p, n); // notice other order
-  arma::vec R_sqs, sigmas, one_step_forecasts;
-  std::fill(out.begin()                 , out.end()               , NA_REAL);
-  if(do_compute_R_sqs){
-    R_sqs.set_size(n);
-    std::fill(R_sqs.begin()             , R_sqs.end()             , NA_REAL);
-  }
-  if(do_compute_sigmas){
-    sigmas.set_size(n);
-    std::fill(sigmas.begin()            , sigmas.end()            , NA_REAL);
-  }
-  if(do_1_step_forecasts){
-    one_step_forecasts.set_size(n);
-    std::fill(one_step_forecasts.begin(), one_step_forecasts.end(), NA_REAL);
-  }
+  auto set_num_vec = [&](const bool not_empty){
+    if(!not_empty)
+      return Rcpp::NumericVector();
+    Rcpp::NumericVector out(n);
+    std::fill(out.begin(), out.end(), NA_REAL);
+    return out;
+  };
+  Rcpp::NumericMatrix out(p, n); // notice other order
+  std::fill(out.begin(), out.end(), NA_REAL);
+
+  Rcpp::NumericVector
+    R_sqs              = set_num_vec(do_compute_R_sqs),
+    sigmas             = set_num_vec(do_compute_sigmas),
+    one_step_forecasts = set_num_vec(do_1_step_forecasts);
 
   /* define intermediates */
   bool is_first = true, do_warn = false;
@@ -655,7 +647,7 @@ Rcpp::List roll_cpp(
       do_warn = true;
 
     int coef_start = this_grp_start * p;
-    worker->set_coef(out.memptr() + coef_start);
+    worker->set_coef(out.begin() + coef_start);
 
     /* copy values */
     {
@@ -697,19 +689,20 @@ Rcpp::List roll_cpp(
   }
 
   Rcpp::List out_list;
-  out_list["coefs"] = out.t();
+  out = Rcpp::transpose(out);
+  out_list["coefs"] = std::move(out);
   if(do_compute_sigmas)
-    out_list["sigmas"] = sigmas;
+    out_list["sigmas"] = std::move(sigmas);
   else
     out_list["sigmas"] = R_NilValue;
 
   if(do_compute_R_sqs)
-    out_list["r.squareds"] = R_sqs;
+    out_list["r.squareds"] = std::move(R_sqs);
   else
     out_list["r.squareds"] = R_NilValue;
 
   if(do_1_step_forecasts)
-    out_list["one_step_forecasts"] = one_step_forecasts;
+    out_list["one_step_forecasts"] = std::move(one_step_forecasts);
   else
     out_list["one_step_forecasts"] = R_NilValue;
 
