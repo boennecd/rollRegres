@@ -13,12 +13,16 @@ static constexpr char C_L = 'L', C_U = 'U', C_T = 'T', C_N = 'N';
 extern "C" {
   void F77_NAME(dchud)(
       double*, const int*, const int*, const double*, double*, const int*,
-      const int*, double*, double*,
+      const int*, const double*, double*,
       double*, double*);
-
   void F77_NAME(dchdd)(
       double*, const int*, const int*, const double*, double*, const int*,
-      const int*, double*, double*, double*, double*, int*);
+      const int*, const double*, double*, double*, double*, int*);
+  void F77_NAME(dqrsl)(
+      double*, int*, int*, int*, double*, const double*, double*, double*,
+      double*, double*, double*, const int*, int*);
+  void F77_NAME(dqrdc)(
+      double*, int*, int*, int*, double*, int*, double*, const int*);
 }
 
 /* see https://stats.stackexchange.com/a/72215/81865 */
@@ -195,8 +199,211 @@ public:
   }
 };
 
-/* class to perform the estimation */
-class roll_cpp_worker {
+class roll_cpp_worker_base {
+protected:
+  const double *last_coef = nullptr;
+
+public:
+  /* updates the present solution to include new observations */
+  virtual void update
+  (const std::size_t, const std::size_t) = 0;
+
+  /* downdate the present solution to exclude some observations */
+  virtual void downdate
+    (const std::size_t, const std::size_t) = 0;
+
+  /* sets the coefficients to the passed pointer. Assumes that sufficient memory
+   * is allocated. A pointer to the memory will be stored and may be used in
+   * other member functions. */
+  virtual void set_coef(double*) = 0;
+
+  /* returns the sum of squared errors. May use a stored pointer to the last
+   * computed coefficients. The class may not need the passed indices */
+  virtual double get_ss(const std::size_t, const std::size_t) = 0;
+
+  /* predicts the mean of a new outcome. May use a stored pointer to the last
+   * computed coefficients */
+  virtual double predict(const std::size_t) = 0;
+
+  virtual ~roll_cpp_worker_base() = default;
+};
+
+/* Does essentially as described in the LINPACK guide */
+class roll_cpp_worker_linpack final : public roll_cpp_worker_base {
+  using iptr = std::unique_ptr<int[]>;
+  using dptr = std::unique_ptr<double[]>;
+
+  const arma::mat &X, X_T = X.t();
+  const arma::vec &Y;
+  const int n = X.n_rows;
+  /* only non-const due to linpack definition */
+  int p = X.n_cols;
+
+  dptr
+    /* upper upper triangular matrix with cholesky decomposition */
+    R     = dptr(new double[p * p]),
+    /* contains the first p elements of Q^\top y */
+    z     = dptr(new double[p]),
+    /* needed in Fortran calls */
+    qraux = dptr(new double[p]),
+    s     = dptr(new double[p]),
+    c     = dptr(new double[p]);
+
+  /* sum of squared errors */
+  double ss;
+
+  void check_start_end
+  (const std::size_t start, const std::size_t end)
+  {
+#ifdef ROLL_DEBUG
+    if(start >= end or (int)end > n)
+      throw std::invalid_argument("Invalid 'start' and/or 'stop'");
+#endif
+  }
+
+public:
+  roll_cpp_worker_linpack
+  (const arma::mat &X, const arma::vec &Y , const std::size_t start,
+   const std::size_t end):
+  X(X), Y(Y)
+  {
+    check_start_end(start, end);
+
+    /* compute the cholesky decomposition. First, we need to setup a few
+     * objects */
+    iptr jpvt  = iptr(new int[p]);
+    for(int i = 0; i < p; ++i)
+      jpvt[i] = 0;
+
+    static constexpr int job = 0; /* do not pivot */
+    double work; /* not referenced when not pivoting */
+
+    // copy values
+    int ld_X_qr = end - start;
+    dptr X_qr(new double[p * ld_X_qr]);
+    for(int j = 0; j < p; ++j)
+      for(unsigned int k = start; k < end; ++k)
+        X_qr[k + j * ld_X_qr] = X[k + j * n];
+
+    /* compute QR and get get upper triangular matrix, R, in the QR
+     * decomposition. See `qr.default`, `qr.R`, `r-source/src/appl/dqrdc2.f`
+     * We use `dqrdc` instead where we can select not to perform pivoting.
+     * NOTICE: no rank check
+     */
+    F77_CALL(dqrdc)(
+        &X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
+        &work, &job);
+
+    /* copy R */
+    {
+      double *r = R.get();
+      for(int i = 0; i < p; ++i){
+        const double *xqr = X_qr.get() + i * ld_X_qr;
+        for(int j = 0; j < p; ++r, ++xqr, ++j)
+          *r = *xqr;
+      }
+    }
+
+    /* get first part of Q^\top y and the squared norm */
+    dptr Q_t_Y(new double[ld_X_qr]);
+    static constexpr int job_qrsl = 1000L;
+    double dummy = 0.;
+    int info;
+
+    F77_CALL(dqrsl)(
+      X_qr.get(), &ld_X_qr, &ld_X_qr, &p, qraux.get(), Y.memptr() + start,
+      &dummy, Q_t_Y.get(), &dummy, &dummy, &dummy, &job_qrsl, &info);
+
+    if(info != 0L)
+      throw std::runtime_error(
+          "'dqrsl' failed with code " + std::to_string(info));
+
+    /* compute ss */
+    ss = 0.;
+    for(int i = p; i < ld_X_qr; ++i)
+      ss += *(Q_t_Y.get() + i) * *(Q_t_Y.get() + i);
+
+    /* store first p elements of Q^\top y */
+    {
+      for(int i = 0; i < p; ++i)
+        *(z.get() + i) = *(Q_t_Y.get() + i);
+    }
+  }
+
+  void update
+  (const std::size_t start, const std::size_t end) override
+  {
+    check_start_end(start, end);
+
+    const double *X_t_p, *y_p;
+    unsigned int k;
+    double norm = std::sqrt(ss);
+
+    for(k = start, X_t_p = X_T.begin() + start * p, y_p = Y.memptr() + start;
+        k < end; ++k, X_t_p += p, ++y_p)
+      F77_CALL(dchud)(
+          R.get(), &p, &p, X_t_p,
+          z.get(), &p, &i_one, y_p, &norm, &c[0], &s[0]);
+
+    ss = norm * norm;
+  }
+
+  void downdate
+  (const std::size_t start, const std::size_t end) override
+  {
+    check_start_end(start, end);
+
+    const double *X_t_p, *y_p;
+    unsigned int k;
+    int info;
+    double norm = std::sqrt(ss);
+
+    for(k = start, X_t_p = X_T.begin() + start * p, y_p = Y.memptr() + start;
+        k < end; ++k, X_t_p += p, ++y_p){
+      F77_CALL(dchdd)(
+          R.get(), &p, &p, X_t_p,
+          z.get(), &p, &i_one, y_p, &norm, &c[0], &s[0], &info);
+
+      if(info != 0)
+        throw std::runtime_error(
+            "'dchdd' failed with code " + std::to_string(info));
+    }
+
+    ss = norm * norm;
+  }
+
+  void set_coef(double *out) override {
+    last_coef = out;
+
+    /* copy first elements of Q^\top y */
+    for(int j = 0; j < p; ++j)
+      *(out + j) = z[j];
+
+    dtrsm(
+      &C_L, &C_U, &C_N, &C_N, &p, &i_one, &d_one, R.get(), &p,
+      out, &p);
+
+    arma::vec tmp(out, p, false);
+  }
+
+  double get_ss(const std::size_t start, const std::size_t end) override {
+    return ss;
+  }
+
+  double predict(const std::size_t i_new) override {
+#ifdef ROLL_DEBUG
+    if(!last_coef)
+      throw std::logic_error("'predict' called before 'set_coef'");
+    if((int)i_new >= n)
+      throw std::invalid_argument("Invalid 'i_new'");
+#endif
+    return dot(last_coef, X_T.memptr() + i_new * p, p);
+  }
+};
+
+/* The first implementation I made which stores X^\top y instead of the first
+ * p rows of Q^\top y where Q is form the QR decompsotion of the design matrix */
+class roll_cpp_worker final : public roll_cpp_worker_base {
   using iptr = std::unique_ptr<int[]>;
   using dptr = std::unique_ptr<double[]>;
 
@@ -221,8 +428,6 @@ class roll_cpp_worker {
       throw std::invalid_argument("Invalid 'start' and/or 'stop'");
 #endif
   }
-
-  const double *last_coef = nullptr;
 
 public:
   roll_cpp_worker
@@ -256,13 +461,13 @@ public:
      * We use `dqrdc` instead where we can select not to perform pivoting.
      * NOTICE: no rank check
      */
-    dqrdc(&X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
-          &work, &job);
+    F77_CALL(dqrdc)(
+        &X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
+        &work, &job);
   }
 
-  /* update the present decomposition */
   void update
-      (const std::size_t start, const std::size_t end)
+      (const std::size_t start, const std::size_t end) override
   {
     check_start_end(start, end);
 
@@ -271,7 +476,7 @@ public:
     unsigned int k;
 
     for(k = start, X_t_p = X_T.begin() + start * p;
-        k < end; ++k, X_t_p +=p){
+        k < end; ++k, X_t_p += p){
       F77_CALL(dchud)(
           &X_qr[0], &ld_X_qr, &p, X_t_p,
           &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
@@ -282,9 +487,8 @@ public:
     }
   }
 
-  /* downdate the present decomposition */
   void downdate
-  (const std::size_t start, const std::size_t end)
+  (const std::size_t start, const std::size_t end) override
   {
     check_start_end(start, end);
 
@@ -308,10 +512,7 @@ public:
     }
   }
 
-  /* set the coefficients to the passed pointer. Assumes that sufficient memory
-   * is allocated. A pointer to the memory will be stored and may be used in
-   * other member functions. */
-  void set_coef(double *out){
+  void set_coef(double *out) override {
     last_coef = out;
 
     /* copy XtY */
@@ -329,9 +530,7 @@ public:
     solve_func(C_N);
   }
 
-  /* returns the sum of squared errors. May use a stored pointer to the last
-   * computed coefficients */
-  double get_ss(const std::size_t start, const std::size_t end){
+  double get_ss(const std::size_t start, const std::size_t end) override {
 #ifdef ROLL_DEBUG
     if(!last_coef)
       throw std::logic_error("'get_ss' called before 'set_coef'");
@@ -347,9 +546,7 @@ public:
     return ss_reg;
   }
 
-  /* predicts the mean of a new outcome. May use a stored pointer to the last
-   * computed coefficients */
-  double predict(const std::size_t i_new){
+  double predict(const std::size_t i_new) override {
 #ifdef ROLL_DEBUG
     if(!last_coef)
       throw std::logic_error("'predict' called before 'set_coef'");
@@ -403,7 +600,7 @@ Rcpp::List roll_cpp(
     delete_start = do_downdates ? -1L : 0L, delete_end = 0L,
     sample_size = 0L, this_grp_start = -1L;
 
-  std::unique_ptr<roll_cpp_worker> worker;
+  std::unique_ptr<roll_cpp_worker_base> worker;
 
   /* compute values */
   for(unsigned int i = 0L; i < n; i = idxs.end()){
@@ -421,7 +618,8 @@ Rcpp::List roll_cpp(
 
       is_first = false;
 
-      worker.reset(new roll_cpp_worker(X, Y, idxs.start(), idxs.end()));
+      worker.reset(new roll_cpp_worker_linpack(
+          X, Y, idxs.start(), idxs.end()));
 
       if(do_compute_R_sqs)
         while(t < sample_size)
