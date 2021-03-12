@@ -6,3 +6,4 @@ tmp\.txt$
 ^\.travis\.yml$
 ^cran-comments\.md$
 ^README\.md$
+^\.github$

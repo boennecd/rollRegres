@@ -553,7 +553,7 @@ public:
 
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
-// [[Rcpp::export]]
+// [[Rcpp::export(rng = false)]]
 Rcpp::List roll_cpp(
     const arma::mat &X, const arma::vec &Y, const int window,
     const bool do_compute_R_sqs,
@@ -710,7 +710,7 @@ Rcpp::List roll_cpp(
 }
 
 
-// [[Rcpp::export(name = ".find_chunks")]]
+// [[Rcpp::export(name = ".find_chunks", rng = false)]]
 Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
                  const unsigned int min_obs){
   /* Idea: we make one pass through `grp`. We keep track of the number of

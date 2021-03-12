@@ -50,7 +50,6 @@ Rcpp::List roll_cpp(const arma::mat& X, const arma::vec& Y, const int window, co
 RcppExport SEXP _rollRegres_roll_cpp(SEXP XSEXP, SEXP YSEXP, SEXP windowSEXP, SEXP do_compute_R_sqsSEXP, SEXP do_compute_sigmasSEXP, SEXP do_1_step_forecastsSEXP, SEXP grpSEXP, SEXP use_grpSEXP, SEXP do_downdatesSEXP, SEXP use_min_obsSEXP, SEXP min_obsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const int >::type window(windowSEXP);
@@ -71,7 +70,6 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width, const unsigned 
 RcppExport SEXP _rollRegres_chunk(SEXP grpSEXP, SEXP widthSEXP, SEXP min_obsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::ivec >::type grp(grpSEXP);
     Rcpp::traits::input_parameter< const unsigned int >::type width(widthSEXP);
     Rcpp::traits::input_parameter< const unsigned int >::type min_obs(min_obsSEXP);

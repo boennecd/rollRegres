@@ -1,5 +1,5 @@
 # rollRegres
-[![Build Status on Travis](https://travis-ci.org/boennecd/rollRegres.svg?branch=master,osx)](https://travis-ci.org/boennecd/rollRegres) 
+[![R-CMD-check](https://github.com/boennecd/rollRegres/workflows/R-CMD-check/badge.svg)](https://github.com/boennecd/rollRegres/actions) 
 [![](https://www.r-pkg.org/badges/version/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
 [![CRAN RStudio mirror downloads](http://cranlogs.r-pkg.org/badges/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
 
