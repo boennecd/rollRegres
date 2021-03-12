@@ -2,3 +2,4 @@ handle missing values
 the downdate may be inaccurate if the cross product of design matrix is close 
 to singular. Potentially check this doing estimation and re-do the QR 
 decomposition if this is the case
+save the `terms.object` like mentioned in https://github.com/boennecd/rollRegres/issues/4
