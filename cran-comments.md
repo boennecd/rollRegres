@@ -17,3 +17,6 @@
 There were no WARNINGs or ERRORs.
 
 There is a NOTE about the package size in some cases.
+
+The issue on the CRAN checks due to the missing char array length arguments in 
+the Fortran calls have been fixed.
