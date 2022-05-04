@@ -98,11 +98,11 @@ test_that("`roll_regres.fit` post warning when low p compared to n", {
   y <- rnorm(20)
 
   expect_warning(
-    roll_regres.fit(x, y, width = 11L),
+    roll_regres.fit(x, y, width = 7L, min_obs = 7L),
     "low sample size relative to number of parameters")
 
   # should have no warning
-  roll_regres.fit(x, y, width = 12L)
+  roll_regres.fit(x, y, width = 8L, min_obs = 7L)
 })
 
 roll_regress_R_for_loop <- function(X, y, width, grp, downdate, min_obs){

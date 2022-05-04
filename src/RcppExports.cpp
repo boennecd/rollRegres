@@ -6,6 +6,11 @@
 
 using namespace Rcpp;
 
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
 // dchud_wrap
 void dchud_wrap(arma::mat& r, int ldr, int p, arma::vec& x, arma::mat& z, int ldz, int nz, double y, double& rho, arma::vec& c, arma::vec& s);
 RcppExport SEXP _rollRegres_dchud_wrap(SEXP rSEXP, SEXP ldrSEXP, SEXP pSEXP, SEXP xSEXP, SEXP zSEXP, SEXP ldzSEXP, SEXP nzSEXP, SEXP ySEXP, SEXP rhoSEXP, SEXP cSEXP, SEXP sSEXP) {

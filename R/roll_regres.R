@@ -226,7 +226,8 @@ roll_regres.fit <- function(
     # check and only keep the rows we need to insert into
     idx_out <- has_value_start:grp_idx_stop
     keep <- complete.cases(o$coefs)
-    stopifnot(sum(keep) >= length(idx_out), all(keep[1:sum(!keep)] == FALSE))
+    stopifnot(sum(keep) >= length(idx_out),
+              all(keep[seq_len(sum(!keep))] == FALSE))
     keep[seq_len(nrow(o$coefs) - length(idx_out))] <- FALSE
     o$coefs <- o$coefs[keep, , drop = FALSE]
     other <- names(o) != "coefs"

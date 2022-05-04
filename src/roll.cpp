@@ -65,7 +65,7 @@ class roll_cpp_indices {
   const std::size_t min_obs;
 
   /* move end one step. Either in terms of rows or the group id. The first
-   * index is handled as a sepcial case */
+   * index is handled as a special case */
   void move_end(){
     const bool is_first_call = end_.idx < 1L;
 
@@ -560,7 +560,7 @@ Rcpp::List roll_cpp(
     const bool do_compute_sigmas, const bool do_1_step_forecasts,
     arma::ivec grp, const bool use_grp, const bool do_downdates,
     const bool use_min_obs = false, const int min_obs = 0L){
-  const std::size_t n = X.n_rows, p = X.n_cols, too_low = p * 3L;
+  const std::size_t n = X.n_rows, p = X.n_cols, too_low = p * 2L;
 
   /* initalize output */
   auto set_num_vec = [&](const bool not_empty){
@@ -601,7 +601,7 @@ Rcpp::List roll_cpp(
         /* need to find `this_grp_start` */
         int last_grp = grp[idxs.end() - 1L];
         this_grp_start = idxs.end() - 1L;
-        while(grp[this_grp_start - 1L] == last_grp and this_grp_start > 0L)
+        while(this_grp_start > 0 && grp[this_grp_start - 1L] == last_grp)
           --this_grp_start;
 
       } else
@@ -728,10 +728,11 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
   /* hopefully not a used group... */
   int cur_grp = std::numeric_limits<int>::min(), first_grp = *grp.begin();
 
+  int const width_int{static_cast<int>(width)};
   bool has_window_length = false;
   for(unsigned int i = 0; i < grp.n_elem; ++g, ++i, ++nobs){
     bool is_new_grp = *g != cur_grp;
-    has_window_length = has_window_length or *g - first_grp >= (int)width - 1L;
+    has_window_length = has_window_length or *g - first_grp >= width_int - 1L;
     cur_grp = *g;
     if(is_new_grp){
       grp_start = i;
@@ -739,7 +740,7 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
       /* need to update istart */
       const int *g1 = grp.begin() + istart;
       for(unsigned int j = istart; j <= i; ++j, ++g1){
-        if(*g - *g1 < (int)width){
+        if(*g - *g1 < width_int){
           istart = j;
           break;
         } else
@@ -773,7 +774,6 @@ Rcpp::List chunk(const arma::ivec grp, const unsigned int width,
       grp_idx_stop.push_back(i + 1L);
 
     }
-
   }
 
   return Rcpp::List::create(
