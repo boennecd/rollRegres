@@ -221,10 +221,10 @@ test_that(desc = "nearly collinear windows agree with fresh QR fits", code = {
   # The predictor perturbation amplifies rounding by about 1e5.
   # Allow for both the condition number and the subsequent window updates.
   for (windows in list(first = 1L, rolling = seq_along(along.with = ends)[-1L])) {
-    expect_equal(object = unname(obj = actual$coefs[ends[windows], , drop = FALSE]),
-                 expected = unname(obj = t(x = reference[1:3, windows, drop = FALSE])),
-                 tolerance = 1e-8)
-    expect_equal(object = actual$sigmas[ends[windows]] / unname(obj = reference[4L, windows]),
-                 expected = rep(x = 1, times = length(x = windows)), tolerance = 1e-8)
+    coefficients <- t(x = reference[1:3, windows, drop = FALSE])
+    coef_error <- abs(x = actual$coefs[ends[windows], , drop = FALSE] - coefficients)
+    sigma_error <- abs(x = actual$sigmas[ends[windows]] / reference[4L, windows] - 1)
+    expect_lt(object = max(coef_error), expected = 1e-8)
+    expect_lt(object = max(sigma_error), expected = 1e-8)
   }
 })
