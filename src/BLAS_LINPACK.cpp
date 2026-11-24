@@ -1,5 +1,5 @@
 #include "BLAS_LINPACK.h"
-#include "R_ext/Linpack.h"
+#include "R_ext/BLAS.h"
 
 void dtrsm(
     const char *side, const char *uplo, const char *transa, const char *diag,

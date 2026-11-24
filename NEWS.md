@@ -1,3 +1,11 @@
+# rollRegres 0.1.5
+
+* The package includes the R BLAS header directly. This fixes compilation on
+  versions of R that no longer include it through the LINPACK header.
+* The package now builds the first regression window with its bundled LINPACK
+  routine. It no longer needs the LINPACK QR routines from R.
+* The package uses the default C++ standard from R.
+
 # rollRegres 0.1.4
 * added missing char array length arguments to Fortran calls.
 * fix an issue with the `group` argument when the first group(s) is ignored 

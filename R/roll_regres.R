@@ -3,9 +3,9 @@
 #' linear models estimated over a moving window or expanding window of data.
 #' The function assumes that data is ordered.
 #'
-#' @param formula as \code{formula} in \code{\link{lm}}.
+#' @param formula as \code{formula} in \code{\link[stats]{lm}}.
 #' @param data an optional \code{data.frame} containing the variables in the model.
-#' @param contrasts list passed to \code{\link{model.matrix.default}}s
+#' @param contrasts list passed to \code{\link[stats:model.matrix]{model.matrix.default}}s
 #' \code{contrasts.arg} argument.
 #' @param width integer with the width of the moving window. Only used if
 #' \code{do_downdates == TRUE}.
@@ -40,7 +40,7 @@
 #' \code{do_compute} argument.
 #'
 #' @seealso \code{\link{roll_regres.fit}} for method that avoids the call to
-#' e.g., \code{\link{model.frame}}.
+#' e.g., \code{\link[stats]{model.frame}}.
 #'
 #' @importFrom stats terms model.matrix model.response
 #'
@@ -99,13 +99,10 @@ roll_regres <- function(
 #' @param y numeric vector of observations of length \code{n}.
 #'
 #' @details
-#' First, the \code{dqrdc} routine from LINPACK is used to form the QR
-#' decomposition for the first window of data using Householder transformations
-#' without pivoting. Then, the LINPACK \code{dchud} and \code{dchdd} routines
-#' are used to update and downdate the Cholesky decomposition (the R matrix in
-#' the QR decomposition).
-#'
-#' Notice that unlike \code{lm}, there are no checks of the rank of the matrix.
+#' The fitter starts with an empty QR factorization. It uses the LINPACK
+#' routine \code{dchud} to add each row of the first window. For subsequent
+#' windows, it uses \code{dchud} to add rows and \code{dchdd} to remove rows.
+#' The fitter assumes that the design matrix has full column rank in each window.
 #'
 #' @references
 #' Golub, G. H., & Van Loan, C. F. (2013). Matrix computations (4rd ed.).
@@ -126,10 +123,10 @@ roll_regres <- function(
 #' out <- roll_regres.fit(x = X, y = y, width = 45L)
 #' tail(out$coefs)
 #'
-#' @seealso \code{\link{roll_regres}} for method similar to \code{\link{lm}}.
+#' @seealso \code{\link{roll_regres}} for method similar to \code{\link[stats]{lm}}.
 #'
 #' @importFrom checkmate assert_int assert_matrix assert_numeric
-#' assert_character assert_integer
+#' @importFrom checkmate assert_character assert_integer
 #' @importFrom stats complete.cases
 #' @export
 roll_regres.fit <- function(
