@@ -191,3 +191,15 @@ test_that("Bug found doing development is fixed", {
   expect_equal(out$sigmas, out_R$sigmas)
   expect_equal(out$r.squareds, out_R$r.squared)
 })
+
+test_that(desc = "rolling exact fits retain their coefficients and residual norms", code = {
+  x <- matrix(data = 1, nrow = 30L, ncol = 1L)
+  for (level in c(0, 1)) {
+    y <- rep(x = level, times = 30L)
+    fit <- roll_regres.fit(x = x, y = y, width = 5L, do_compute = "sigmas")
+    expect_equal(object = as.numeric(x = fit$coefs[5:30]),
+                 expected = y[5:30], tolerance = 1e-12)
+    expect_equal(object = fit$sigmas[5:30],
+                 expected = numeric(length = 26L), tolerance = 1e-12)
+  }
+})

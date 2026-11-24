@@ -264,7 +264,8 @@ public:
           R.get(), &p, &p, X_t_p,
           z.get(), &p, &i_one, y_p, &ss_sqrt, &c[0], &s[0], &info);
 
-      if(info != 0)
+      // Code 1 marks only the residual norm as invalid.
+      if(info < 0)
         throw std::runtime_error(
             "'dchdd' failed with code " + std::to_string(info));
     }
@@ -283,6 +284,12 @@ public:
   }
 
   double get_ss(const std::size_t start, const std::size_t end) {
+    // R and z remain valid when roundoff prevents a residual norm downdate.
+    if(ss_sqrt < 0.){
+      ss_sqrt = 0.;
+      for(std::size_t i = start; i < end; ++i)
+        ss_sqrt = std::hypot(ss_sqrt, Y[i] - predict(i));
+    }
     return ss_sqrt * ss_sqrt;
   }
 

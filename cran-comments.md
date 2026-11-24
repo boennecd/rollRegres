@@ -1,20 +1,17 @@
-## Test environments
-* Ubuntu 20.04 LTS with gcc 10.1.0
-  R version 4.1.3
-* Ubuntu 20.04 LTS with gcc 10.1.0
-  R version 4.1.3 with valgrind
-* Ubuntu 20.04 LTS with gcc 10.1.0
-  R devel 2022-04-25 r82253 with ASAN and UBSAN
-* Ubuntu 20.04 LTS with gcc 10.1.0
-  R devel 2022-04-25 r82253 with LTO checks
-* GitHub actions on windows-latest (release), macOS-latest (release), 
-  ubuntu-20.04 (release), ubuntu-20.04 (old-release), and ubuntu-20.04 (devel)
-* win-builder (devel, oldrelease, and release)
-* `rhub::check_for_cran()`
-* `rhub::check(platform = c("fedora-clang-devel", "macos-highsierra-release-cran"))`
-  
-## R CMD check results
-There were no WARNINGs or ERRORs.
+## Resubmission
 
-The issue on the CRAN checks due to the missing char array length arguments in 
-the Fortran calls have been fixed.
+rollRegres 0.1.4 was archived on 2023-09-18 for incorrect use of headers.
+Version 0.1.5 includes R_ext/BLAS.h directly for dtrsm and the Fortran
+character-length arguments. It removes the explicit C++11 specification.
+The first window now uses the bundled LINPACK update routine.
+
+## Local check
+
+Ubuntu 24.04.5 LTS, x86_64, R 4.6.2, GCC and GNU Fortran 13.3.0.
+
+R CMD check --as-cran reported zero errors, zero warnings, and two notes.
+
+* Incoming feasibility identifies the package as a new submission and lists
+  the archive record.
+* The Ubuntu build of R includes -mno-omit-leaf-frame-pointer in its compiler
+  flags. The package Makevars does not set this flag.
