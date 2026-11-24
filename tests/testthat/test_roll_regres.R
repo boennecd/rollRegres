@@ -228,3 +228,21 @@ test_that(desc = "nearly collinear windows agree with fresh QR fits", code = {
     expect_lt(object = max(sigma_error), expected = 1e-8)
   }
 })
+
+test_that(desc = "fitted windows need at least one row per coefficient", code = {
+  i <- seq_len(length.out = 5L)
+  x <- cbind(1, i, i^2)
+  y <- 2 + i - i^2
+  fit <- function(groups, rolling) {
+    roll_regres.fit(x = x, y = y, width = 1L, grp = groups, min_obs = 1L,
+                    do_downdates = rolling, do_compute = "sigmas")
+  }
+  expect_error(object = fit(groups = c(1L, 1L, 2L, 2L, 2L), rolling = FALSE),
+               regexp = "window has 2 rows for 3 coefficients")
+  groups <- c(1L, 1L, 1L, 2L, 2L)
+  expect_error(object = fit(groups = groups, rolling = TRUE),
+               regexp = "window has 2 rows for 3 coefficients")
+  result <- suppressWarnings(expr = fit(groups = groups, rolling = FALSE))
+  expect_equal(object = unname(obj = result$coefs[3L, ]), expected = c(2, 1, -1))
+  expect_true(object = is.nan(x = result$sigmas[3L]))
+})

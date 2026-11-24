@@ -151,18 +151,12 @@ public:
     move_end();
   }
 
-  struct old_idx_class {
-    const index start, end;
-  };
-
-  /* move start and end one step and return copy of previous start and end */
-  old_idx_class move(const bool do_move_start){
+  /* move start and end one step */
+  void move(const bool do_move_start){
 #ifdef ROLL_DEBUG
     if(end_.idx == n)
       throw std::logic_error("already at end");
 #endif
-
-    old_idx_class out { start_, end_ };
 
     if(do_move_start){
       if(has_grp){
@@ -189,8 +183,6 @@ public:
     }
 
     move_end();
-
-    return out;
   }
 };
 
@@ -234,16 +226,15 @@ public:
     arma::mat qr = X.rows(start, end - 1);
     arma::vec qty = Y.subvec(start, end - 1);
     const int rows = end - start;
-    const int k = std::min(rows, p);
-    if(k > 0){
+    if(p > 0){
       factor_first_window(qr.memptr(), rows, p, qty.memptr(), c.get());
       for(int j = 0; j < p; ++j)
-        std::copy_n(qr.colptr(j), std::min(j + 1, rows),
+        std::copy_n(qr.colptr(j), j + 1,
                     R.get() + static_cast<std::size_t>(j) * p);
-      std::copy_n(qty.memptr(), k, z.get());
+      std::copy_n(qty.memptr(), p, z.get());
     }
-    if(rows > k)
-      ss_sqrt = arma::norm(qty.tail(rows - k), 2);
+    if(rows > p)
+      ss_sqrt = arma::norm(qty.tail(rows - p), 2);
   }
 
   void update
@@ -359,12 +350,20 @@ Rcpp::List roll_cpp(
 
   std::size_t
     delete_start = do_downdates ? -1L : 0L, delete_end = 0L,
-    sample_size = 0L, this_grp_start = -1L;
+    this_grp_start = -1L;
 
   std::unique_ptr<roll_cpp_worker> worker;
 
   /* compute values */
   for(unsigned int i = 0L; i < n; i = idxs.end()){
+    const std::size_t old_start = idxs.start(), old_end = idxs.end();
+    if(!is_first)
+      idxs.move(do_downdates);
+    const std::size_t sample_size = idxs.end() - idxs.start();
+    if(sample_size < p)
+      throw std::invalid_argument("window has " + std::to_string(sample_size) +
+                                  " rows for " + std::to_string(p) + " coefficients");
+
     if(is_first){ // setup worker
       if(use_grp){
         /* need to find `this_grp_start` */
@@ -375,7 +374,6 @@ Rcpp::List roll_cpp(
 
       } else
         this_grp_start = idxs.end() - 1L;
-      sample_size = idxs.end() - idxs.start();
 
       is_first = false;
 
@@ -387,20 +385,17 @@ Rcpp::List roll_cpp(
           update_sse(Y[t], ss_tot, t, y_bar);
 
     } else {
-      /* find data start and end for both new and old data */
-      auto old = idxs.move(do_downdates);
-      this_grp_start = old.end;
-      sample_size = idxs.end() - idxs.start();
+      this_grp_start = old_end;
 
       /* updates */
-      worker->update(old.end, idxs.end());
-      for(unsigned int k = old.end; k < idxs.end() and do_compute_R_sqs;
+      worker->update(old_end, idxs.end());
+      for(unsigned int k = old_end; k < idxs.end() and do_compute_R_sqs;
           ++k)
         update_sse(Y[k], ss_tot, t, y_bar);
 
       /* downdates */
       if(do_downdates){
-        delete_start = old.start.idx;
+        delete_start = old_start;
         delete_end = idxs.start();
 
         if(delete_start < delete_end)
@@ -430,7 +425,8 @@ Rcpp::List roll_cpp(
       double ss_reg = worker->get_ss(idxs.start(), idxs.end());
 
       if(do_compute_sigmas){
-        const double new_sigma = std::sqrt(ss_reg / (sample_size - p));
+        const double new_sigma = sample_size == p ? R_NaN :
+          std::sqrt(ss_reg / (sample_size - p));
         for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
           sigmas[k] = new_sigma;
       }

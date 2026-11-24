@@ -48,6 +48,8 @@ Householder QR decomposition of the first window. It uses \code{dqrsl}
 to apply the orthogonal transformation to the response. For subsequent
 windows, it uses \code{dchud} to add rows and \code{dchdd} to remove rows.
 The fitter assumes that the design matrix has full column rank in each window.
+It raises an error if a fitted window has fewer rows than coefficients.
+With equal counts, the residual standard deviation is undefined (\code{NaN}).
 }
 \examples{
 # simulate data

@@ -1,7 +1,6 @@
 #include "BLAS_LINPACK.h"
 #include "R_ext/BLAS.h"
 #include "R_ext/Linpack.h"
-#include <algorithm>
 
 void dtrsm(
     const char *side, const char *uplo, const char *transa, const char *diag,
@@ -20,7 +19,7 @@ void factor_first_window(double *x, int rows, int cols, double *qty,
                   &no_pivot);
 
   // Job 1000 only computes Q^T y. LINPACK permits y and qty to coincide.
-  int k = std::min(rows, cols), job = 1000, info = 0;
-  F77_CALL(dqrsl)(x, &rows, &rows, &k, qraux, qty, &unused, qty,
+  int job = 1000, info = 0;
+  F77_CALL(dqrsl)(x, &rows, &rows, &cols, qraux, qty, &unused, qty,
                   &unused, &unused, &unused, &job, &info);
 }

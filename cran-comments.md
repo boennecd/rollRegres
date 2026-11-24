@@ -1,4 +1,4 @@
-## Resubmission
+## New version submission
 
 rollRegres 0.1.4 was archived on 2023-09-18 for incorrect use of headers.
 Version 0.1.5 includes R_ext/BLAS.h directly for dtrsm and the Fortran
