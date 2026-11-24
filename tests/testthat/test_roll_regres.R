@@ -246,3 +246,13 @@ test_that(desc = "fitted windows need at least one row per coefficient", code = 
   expect_equal(object = unname(obj = result$coefs[3L, ]), expected = c(2, 1, -1))
   expect_true(object = is.nan(x = result$sigmas[3L]))
 })
+
+test_that(desc = "the formula interface accepts full-rank square windows", code = {
+  data <- data.frame(x = 1:5, y = c(4, 6, 8, 10, 12))
+  result <- expect_warning(object = roll_regres(
+    formula = y ~ x, data = data, width = 2L, min_obs = 2L,
+    do_compute = "sigmas"), regexp = "low sample size")
+  expect_equal(object = unname(obj = result$coefs[2:5, ]),
+               expected = matrix(data = 2, nrow = 4L, ncol = 2L))
+  expect_true(object = all(is.nan(x = result$sigmas[2:5])))
+})

@@ -84,7 +84,7 @@ roll_regres <- function(
   # find results
   out <- roll_regres.fit(
     x = x, y = y, width = width, do_compute = do_compute, grp = grp,
-    do_downdates = do_downdates)
+    do_downdates = do_downdates, min_obs = min_obs)
 
   # add contrasts as an attribuate
   attr(out, "terms") <- attr(x, "contrasts")
@@ -141,7 +141,7 @@ roll_regres.fit <- function(
   assert_numeric(y, finite = TRUE, any.missing = FALSE, len = nrow(x))
   if(!is.null(grp))
     assert_int(width, upper = nrow(x)) else
-      assert_int(width, lower = ncol(x) + 1L, upper = nrow(x))
+      assert_int(width, lower = max(1L, ncol(x = x)), upper = nrow(x))
   assert_character(do_compute, any.missing = FALSE)
   if(!all(do_compute %in% c("sigmas", "r.squareds", "1_step_forecasts")))
     stop(sQuote(do_compute), " contains elements which are not implemented")

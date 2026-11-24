@@ -4,6 +4,8 @@
   versions of R that no longer include it through the LINPACK header.
 * Rolling regressions now retain valid coefficients when roundoff prevents a
   residual norm downdate. The fitter recomputes the norm when it is needed.
+* The formula interface now passes `min_obs` to the fitter. Ungrouped fits
+  accept a window width equal to the number of coefficients.
 * The fitter reports an error if a fitted window has fewer rows than coefficients.
 * The package uses the default C++ standard from R.
 
