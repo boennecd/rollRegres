@@ -230,8 +230,20 @@ public:
    const std::size_t end):
   X_T(X.t()), Y(Y), n(X.n_rows), p(X.n_cols)
   {
-    // Build the first fit by adding its observations to the empty factor.
-    update(start, end);
+    check_start_end(start, end);
+    arma::mat qr = X.rows(start, end - 1);
+    arma::vec qty = Y.subvec(start, end - 1);
+    const int rows = end - start;
+    const int k = std::min(rows, p);
+    if(k > 0){
+      factor_first_window(qr.memptr(), rows, p, qty.memptr(), c.get());
+      for(int j = 0; j < p; ++j)
+        std::copy_n(qr.colptr(j), std::min(j + 1, rows),
+                    R.get() + static_cast<std::size_t>(j) * p);
+      std::copy_n(qty.memptr(), k, z.get());
+    }
+    if(rows > k)
+      ss_sqrt = arma::norm(qty.tail(rows - k), 2);
   }
 
   void update

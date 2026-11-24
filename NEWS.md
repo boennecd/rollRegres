@@ -2,8 +2,6 @@
 
 * The package includes the R BLAS header directly. This fixes compilation on
   versions of R that no longer include it through the LINPACK header.
-* The package now builds the first regression window with its bundled LINPACK
-  routine. It no longer needs the LINPACK QR routines from R.
 * Rolling regressions now retain valid coefficients when roundoff prevents a
   residual norm downdate. The fitter recomputes the norm when it is needed.
 * The package uses the default C++ standard from R.

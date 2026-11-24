@@ -43,8 +43,9 @@ Same as \code{\link{roll_regres}}.
 Function with a few validations before calling C++ code.
 }
 \details{
-The fitter starts with an empty QR factorization. It uses the LINPACK
-routine \code{dchud} to add each row of the first window. For subsequent
+The fitter uses the LINPACK routine \code{dqrdc} to compute an unpivoted
+Householder QR decomposition of the first window. It uses \code{dqrsl}
+to apply the orthogonal transformation to the response. For subsequent
 windows, it uses \code{dchud} to add rows and \code{dchdd} to remove rows.
 The fitter assumes that the design matrix has full column rank in each window.
 }

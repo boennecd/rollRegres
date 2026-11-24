@@ -3,7 +3,7 @@
 rollRegres 0.1.4 was archived on 2023-09-18 for incorrect use of headers.
 Version 0.1.5 includes R_ext/BLAS.h directly for dtrsm and the Fortran
 character-length arguments. It removes the explicit C++11 specification.
-The first window now uses the bundled LINPACK update routine.
+The first window uses the original unpivoted QR routines declared in R_ext/Linpack.h.
 
 ## Local check
 

@@ -5,7 +5,6 @@ void dtrsm(
     const char *side, const char *uplo, const char *transa, const char *diag,
     const int *m, const int *n, const double *alpha, const double *a,
     const int *lda, double *b, const int *ldb);
-void dtrsm(
-    const char *side, const char *uplo, const char *transa, const char *diag,
-    const int *m, const int *n, const double *alpha, const double *a,
-    const int *lda, double *b, const int *ldb);
+
+void factor_first_window(double *x, int rows, int cols, double *qty,
+                         double *qraux);

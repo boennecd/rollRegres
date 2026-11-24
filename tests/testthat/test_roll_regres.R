@@ -203,3 +203,28 @@ test_that(desc = "rolling exact fits retain their coefficients and residual norm
                  expected = numeric(length = 26L), tolerance = 1e-12)
   }
 })
+
+test_that(desc = "nearly collinear windows agree with fresh QR fits", code = {
+  i <- seq_len(length.out = 96L)
+  a <- sin(x = i)
+  x <- cbind(1, a, a + 1e-5 * cos(x = 2 * i))
+  y <- 1 + 2 * a - 1e-5 * cos(x = 2 * i) + 1e-5 * sin(x = 3 * i)
+  width <- 32L
+  ends <- width:length(x = i)
+  actual <- roll_regres.fit(x = x, y = y, width = width, do_compute = "sigmas")
+  reference <- vapply(X = ends, FUN = function(end) {
+    rows <- (end - width + 1L):end
+    fit <- stats::lm.fit(x = x[rows, ], y = y[rows])
+    stopifnot(fit$rank == ncol(x = x))
+    c(fit$coefficients, sqrt(x = sum(fit$residuals^2) / (width - fit$rank)))
+  }, FUN.VALUE = numeric(length = 4L))
+  # The predictor perturbation amplifies rounding by about 1e5.
+  # Allow for both the condition number and the subsequent window updates.
+  for (windows in list(first = 1L, rolling = seq_along(along.with = ends)[-1L])) {
+    expect_equal(object = unname(obj = actual$coefs[ends[windows], , drop = FALSE]),
+                 expected = unname(obj = t(x = reference[1:3, windows, drop = FALSE])),
+                 tolerance = 1e-8)
+    expect_equal(object = actual$sigmas[ends[windows]] / unname(obj = reference[4L, windows]),
+                 expected = rep(x = 1, times = length(x = windows)), tolerance = 1e-8)
+  }
+})
