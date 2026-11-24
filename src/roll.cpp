@@ -276,7 +276,11 @@ public:
           R.get(), &p, &p, X_t_p,
           z.get(), &p, &i_one, y_p, &ss_sqrt, &c[0], &s[0], &info);
 
-      // Code 1 marks only the residual norm as invalid.
+      // With info = -1, R still describes the window before the row removal.
+      // With info = 1, dchdd updated R and z, so we can compute the coefficients.
+      // Roundoff can prevent the residual norm downdate near an exact fit.
+      // dchdd then sets ss_sqrt to -1. If needed, get_ss() recomputes the
+      // norm from the residuals of the current window.
       if(info < 0)
         throw std::runtime_error(
             "'dchdd' failed with code " + std::to_string(info));
