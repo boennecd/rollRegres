@@ -4,8 +4,15 @@
 \alias{roll_regres.fit}
 \title{Fitter Function for Rolling and Expanding Linear Models}
 \usage{
-roll_regres.fit(x, y, width, do_compute = character(), grp = NULL,
-  do_downdates = TRUE, min_obs = NULL)
+roll_regres.fit(
+  x,
+  y,
+  width,
+  do_compute = character(),
+  grp = NULL,
+  do_downdates = TRUE,
+  min_obs = NULL
+)
 }
 \arguments{
 \item{x}{design matrix of dimension \code{n * p}.}
@@ -36,13 +43,13 @@ Same as \code{\link{roll_regres}}.
 Function with a few validations before calling C++ code.
 }
 \details{
-First, the \code{dqrdc} routine from LINPACK is used to form the QR
-decomposition for the first window of data using Householder transformations
-without pivoting. Then, the LINPACK \code{dchud} and \code{dchdd} routines
-are used to update and downdate the Cholesky decomposition (the R matrix in
-the QR decomposition).
-
-Notice that unlike \code{lm}, there are no checks of the rank of the matrix.
+The fitter uses the LINPACK routine \code{dqrdc} to compute an unpivoted
+Householder QR decomposition of the first window. It uses \code{dqrsl}
+to apply the orthogonal transformation to the response. For subsequent
+windows, it uses \code{dchud} to add rows and \code{dchdd} to remove rows.
+The fitter assumes that the design matrix has full column rank in each window.
+It raises an error if a fitted window has fewer rows than coefficients.
+With equal counts, the residual standard deviation is undefined (\code{NaN}).
 }
 \examples{
 # simulate data
@@ -62,5 +69,5 @@ Golub, G. H., & Van Loan, C. F. (2013). Matrix computations (4rd ed.).
 JHU Press. See chapter 5 and section 6.5.
 }
 \seealso{
-\code{\link{roll_regres}} for method similar to \code{\link{lm}}.
+\code{\link{roll_regres}} for method similar to \code{\link[stats]{lm}}.
 }

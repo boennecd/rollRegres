@@ -6,9 +6,9 @@
 #include <sstream>
 #include <array>
 
-static constexpr int i_one = 1L, i_zero = 0L;
+static constexpr int i_one = 1L;
 static constexpr double d_one = 1;
-static constexpr char C_L = 'L', C_U = 'U', C_T = 'T', C_N = 'N';
+static constexpr char C_L = 'L', C_U = 'U', C_N = 'N';
 
 extern "C" {
   void F77_NAME(dchud)(
@@ -18,11 +18,6 @@ extern "C" {
   void F77_NAME(dchdd)(
       double*, const int*, const int*, const double*, double*, const int*,
       const int*, const double*, double*, double*, double*, int*);
-  void F77_NAME(dqrsl)(
-      double*, int*, int*, int*, double*, const double*, double*, double*,
-      double*, double*, double*, const int*, int*);
-  void F77_NAME(dqrdc)(
-      double*, int*, int*, int*, double*, int*, double*, const int*);
 }
 
 /* see https://stats.stackexchange.com/a/72215/81865 */
@@ -156,18 +151,12 @@ public:
     move_end();
   }
 
-  struct old_idx_class {
-    const index start, end;
-  };
-
-  /* move start and end one step and return copy of previous start and end */
-  old_idx_class move(const bool do_move_start){
+  /* move start and end one step */
+  void move(const bool do_move_start){
 #ifdef ROLL_DEBUG
     if(end_.idx == n)
       throw std::logic_error("already at end");
 #endif
-
-    old_idx_class out { start_, end_ };
 
     if(do_move_start){
       if(has_grp){
@@ -194,63 +183,29 @@ public:
     }
 
     move_end();
-
-    return out;
   }
 };
 
-class roll_cpp_worker_base {
-protected:
-  const double *last_coef = nullptr;
-
-public:
-  /* updates the present solution to include new observations */
-  virtual void update
-  (const std::size_t, const std::size_t) = 0;
-
-  /* downdate the present solution to exclude some observations */
-  virtual void downdate
-    (const std::size_t, const std::size_t) = 0;
-
-  /* sets the coefficients to the passed pointer. Assumes that sufficient memory
-   * is allocated. A pointer to the memory will be stored and may be used in
-   * other member functions. */
-  virtual void set_coef(double*) = 0;
-
-  /* returns the sum of squared errors. May use a stored pointer to the last
-   * computed coefficients. The class may not need the passed indices */
-  virtual double get_ss(const std::size_t, const std::size_t) = 0;
-
-  /* predicts the mean of a new outcome. May use a stored pointer to the last
-   * computed coefficients */
-  virtual double predict(const std::size_t) = 0;
-
-  virtual ~roll_cpp_worker_base() = default;
-};
-
 /* Does essentially as described in the LINPACK guide */
-class roll_cpp_worker_linpack final : public roll_cpp_worker_base {
-  using iptr = std::unique_ptr<int[]>;
+class roll_cpp_worker {
+  const double *last_coef = nullptr;
   using dptr = std::unique_ptr<double[]>;
 
-  const arma::mat &X, X_T = X.t();
+  const arma::mat X_T;
   const arma::vec &Y;
-  const int n = X.n_rows;
-  /* only non-const due to linpack definition */
-  int p = X.n_cols;
+  const int n, p;
 
   dptr
-    /* upper upper triangular matrix with cholesky decomposition */
-    R     = dptr(new double[p * p]),
+    /* upper triangular factor of the design matrix */
+    R     = dptr(new double[X_T.n_rows * X_T.n_rows]()),
     /* contains the first p elements of Q^\top y */
-    z     = dptr(new double[p]),
+    z     = dptr(new double[p]()),
     /* needed in Fortran calls */
-    qraux = dptr(new double[p]),
     s     = dptr(new double[p]),
     c     = dptr(new double[p]);
 
   /* square root of sum of squared errors */
-  double ss_sqrt;
+  double ss_sqrt = 0.;
 
   void check_start_end
   (const std::size_t start, const std::size_t end)
@@ -262,77 +217,28 @@ class roll_cpp_worker_linpack final : public roll_cpp_worker_base {
   }
 
 public:
-  roll_cpp_worker_linpack
+  roll_cpp_worker
   (const arma::mat &X, const arma::vec &Y , const std::size_t start,
    const std::size_t end):
-  X(X), Y(Y)
+  X_T(X.t()), Y(Y), n(X.n_rows), p(X.n_cols)
   {
     check_start_end(start, end);
-
-    /* compute the cholesky decomposition. First, we need to setup a few
-     * objects */
-    iptr jpvt  = iptr(new int[p]);
-    for(int i = 0; i < p; ++i)
-      jpvt[i] = 0;
-
-    static constexpr int job = 0; /* do not pivot */
-    double work; /* not referenced when not pivoting */
-
-    // copy values
-    int ld_X_qr = end - start;
-    dptr X_qr(new double[p * ld_X_qr]);
-    for(int j = 0; j < p; ++j)
-      for(unsigned int k = start; k < end; ++k)
-        X_qr[k + j * ld_X_qr] = X[k + j * n];
-
-    /* compute QR and get get upper triangular matrix, R, in the QR
-     * decomposition. See `qr.default`, `qr.R`, `r-source/src/appl/dqrdc2.f`
-     * We use `dqrdc` instead where we can select not to perform pivoting.
-     * NOTICE: no rank check
-     */
-    F77_CALL(dqrdc)(
-        &X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
-        &work, &job);
-
-    /* copy R */
-    {
-      double *r = R.get();
-      for(int i = 0; i < p; ++i){
-        const double *xqr = X_qr.get() + i * ld_X_qr;
-        for(int j = 0; j < p; ++r, ++xqr, ++j)
-          *r = *xqr;
-      }
+    arma::mat qr = X.rows(start, end - 1);
+    arma::vec qty = Y.subvec(start, end - 1);
+    const int rows = end - start;
+    if(p > 0){
+      factor_first_window(qr.memptr(), rows, p, qty.memptr(), c.get());
+      for(int j = 0; j < p; ++j)
+        std::copy_n(qr.colptr(j), j + 1,
+                    R.get() + static_cast<std::size_t>(j) * p);
+      std::copy_n(qty.memptr(), p, z.get());
     }
-
-    /* get first part of Q^\top y and the squared norm */
-    dptr Q_t_Y(new double[ld_X_qr]);
-    static constexpr int job_qrsl = 1000L;
-    double dummy = 0.;
-    int info;
-
-    F77_CALL(dqrsl)(
-      X_qr.get(), &ld_X_qr, &ld_X_qr, &p, qraux.get(), Y.memptr() + start,
-      &dummy, Q_t_Y.get(), &dummy, &dummy, &dummy, &job_qrsl, &info);
-
-    if(info != 0L)
-      throw std::runtime_error(
-          "'dqrsl' failed with code " + std::to_string(info));
-
-    /* compute ss */
-    ss_sqrt = 0.;
-    for(int i = p; i < ld_X_qr; ++i)
-      ss_sqrt += *(Q_t_Y.get() + i) * *(Q_t_Y.get() + i);
-    ss_sqrt = std::sqrt(ss_sqrt);
-
-    /* store first p elements of Q^\top y */
-    {
-      for(int i = 0; i < p; ++i)
-        *(z.get() + i) = *(Q_t_Y.get() + i);
-    }
+    if(rows > p)
+      ss_sqrt = arma::norm(qty.tail(rows - p), 2);
   }
 
   void update
-  (const std::size_t start, const std::size_t end) override
+  (const std::size_t start, const std::size_t end)
   {
     check_start_end(start, end);
 
@@ -347,7 +253,7 @@ public:
   }
 
   void downdate
-  (const std::size_t start, const std::size_t end) override
+  (const std::size_t start, const std::size_t end)
   {
     check_start_end(start, end);
 
@@ -361,13 +267,18 @@ public:
           R.get(), &p, &p, X_t_p,
           z.get(), &p, &i_one, y_p, &ss_sqrt, &c[0], &s[0], &info);
 
-      if(info != 0)
+      // With info = -1, R still describes the window before the row removal.
+      // With info = 1, dchdd updated R and z, so we can compute the coefficients.
+      // Roundoff can prevent the residual norm downdate near an exact fit.
+      // dchdd then sets ss_sqrt to -1. If needed, get_ss() recomputes the
+      // norm from the residuals of the current window.
+      if(info < 0)
         throw std::runtime_error(
             "'dchdd' failed with code " + std::to_string(info));
     }
   }
 
-  void set_coef(double *out) override {
+  void set_coef(double *out) {
     last_coef = out;
 
     /* copy first elements of Q^\top y */
@@ -379,11 +290,17 @@ public:
       out, &p);
   }
 
-  double get_ss(const std::size_t start, const std::size_t end) override {
+  double get_ss(const std::size_t start, const std::size_t end) {
+    // R and z remain valid when roundoff prevents a residual norm downdate.
+    if(ss_sqrt < 0.){
+      ss_sqrt = 0.;
+      for(std::size_t i = start; i < end; ++i)
+        ss_sqrt = std::hypot(ss_sqrt, Y[i] - predict(i));
+    }
     return ss_sqrt * ss_sqrt;
   }
 
-  double predict(const std::size_t i_new) override {
+  double predict(const std::size_t i_new) {
 #ifdef ROLL_DEBUG
     if(!last_coef)
       throw std::logic_error("'predict' called before 'set_coef'");
@@ -393,163 +310,6 @@ public:
     return dot(last_coef, X_T.memptr() + i_new * p, p);
   }
 };
-
-/* The first implementation I made which stores X^\top y instead of the first
- * p rows of Q^\top y where Q is from the QR decompsotion of the design matrix */
-class roll_cpp_worker final : public roll_cpp_worker_base {
-  using iptr = std::unique_ptr<int[]>;
-  using dptr = std::unique_ptr<double[]>;
-
-  const arma::mat &X, X_T = X.t();
-  const arma::vec &Y;
-  const int n = X.n_rows;
-  /* only non-const due to linpack definition */
-  int p = X.n_cols, ld_X_qr;
-
-  iptr jpvt  = iptr(new int[p]);
-  dptr qraux = dptr(new double[p]),
-       XtY   = dptr(new double[p]),
-       s     = dptr(new double[p]),
-       c     = dptr(new double[p]),
-       X_qr;
-
-  void check_start_end
-    (const std::size_t start, const std::size_t end)
-  {
-#ifdef ROLL_DEBUG
-    if(start >= end or (int)end > n)
-      throw std::invalid_argument("Invalid 'start' and/or 'stop'");
-#endif
-  }
-
-public:
-  roll_cpp_worker
-  (const arma::mat &X, const arma::vec &Y , const std::size_t start,
-   const std::size_t end):
-  X(X), Y(Y), ld_X_qr(end - start)
-  {
-    check_start_end(start, end);
-
-    /* compute the cholesky decomposition. First, we need to setup a few
-     * objects */
-    for(int i = 0; i < p; ++i){
-      jpvt[i] = 0;
-      XtY[i] = 0;
-    }
-
-    int job = 0; /* do not pivot */
-    double work; /* not referenced when not pivoting */
-
-    // copy values
-    X_qr.reset(new double[p * ld_X_qr]);
-    for(int j = 0; j < p; ++j){ /* for each covaraite */
-     for(unsigned int k = start; k < end; ++k){ /* for each observation */
-        X_qr[k + j * ld_X_qr] = X[k + j * n];
-        XtY[j] += Y[k] * X[k + j * n];
-      }
-    }
-
-    /* compute QR and get get upper triangular matrix, R, in the QR
-     * decomposition. See `qr.default`, `qr.R`, `r-source/src/appl/dqrdc2.f`
-     * We use `dqrdc` instead where we can select not to perform pivoting.
-     * NOTICE: no rank check
-     */
-    F77_CALL(dqrdc)(
-        &X_qr[0], &ld_X_qr, &ld_X_qr, &p, &qraux[0], &jpvt[0],
-        &work, &job);
-  }
-
-  void update
-      (const std::size_t start, const std::size_t end) override
-  {
-    check_start_end(start, end);
-
-    double ddum;
-    const double *X_t_p;
-    unsigned int k;
-
-    for(k = start, X_t_p = X_T.begin() + start * p;
-        k < end; ++k, X_t_p += p){
-      F77_CALL(dchud)(
-          &X_qr[0], &ld_X_qr, &p, X_t_p,
-          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0]);
-
-      /* update X^T y */
-      for(int j = 0; j < p; ++j)
-        XtY[j] += Y[k] * *(X_t_p + j);
-    }
-  }
-
-  void downdate
-  (const std::size_t start, const std::size_t end) override
-  {
-    check_start_end(start, end);
-
-    double ddum;
-    const double *X_t_p;
-    unsigned int k;
-    int info;
-
-    for(k = start, X_t_p = X_T.begin() + start * p; k < end; ++k, X_t_p += p){
-      F77_CALL(dchdd)(
-          &X_qr[0], &ld_X_qr, &p, X_t_p,
-          &ddum, &i_zero, &i_zero, &ddum, &ddum, &c[0], &s[0], &info);
-
-      if(info != 0)
-        throw std::runtime_error(
-            "'dchdd' failed with code " + std::to_string(info));
-
-      // downdate X^T y
-      for(int j = 0; j < p; ++j)
-        XtY[j] -= Y[k] * *(X_t_p + j);
-    }
-  }
-
-  void set_coef(double *out) override {
-    last_coef = out;
-
-    /* copy XtY */
-    for(int j = 0; j < p; ++j)
-      *(out + j) = XtY[j];
-
-    /* solve */
-    auto solve_func = [&](char transpose){
-      dtrsm(
-        &C_L, &C_U, &transpose, &C_N, &p, &i_one, &d_one, &X_qr[0], &ld_X_qr,
-        out, &p);
-    };
-
-    solve_func(C_T);
-    solve_func(C_N);
-  }
-
-  double get_ss(const std::size_t start, const std::size_t end) override {
-#ifdef ROLL_DEBUG
-    if(!last_coef)
-      throw std::logic_error("'get_ss' called before 'set_coef'");
-#endif
-
-    double ss_reg = 0.;
-    const double *X_t_p = X_T.memptr() + start * p;
-    for(unsigned int k = start; k < end; ++k, X_t_p += p){
-      const double res = Y[k] - dot(last_coef, X_t_p, p);
-      ss_reg += res * res;
-    }
-
-    return ss_reg;
-  }
-
-  double predict(const std::size_t i_new) override {
-#ifdef ROLL_DEBUG
-    if(!last_coef)
-      throw std::logic_error("'predict' called before 'set_coef'");
-    if((int)i_new >= n)
-      throw std::invalid_argument("Invalid 'i_new'");
-#endif
-    return dot(last_coef, X_T.memptr() + i_new * p, p);
-  }
-};
-
 
 //' @import Rcpp
 //' @useDynLib rollRegres, .registration = TRUE
@@ -590,12 +350,20 @@ Rcpp::List roll_cpp(
 
   std::size_t
     delete_start = do_downdates ? -1L : 0L, delete_end = 0L,
-    sample_size = 0L, this_grp_start = -1L;
+    this_grp_start = -1L;
 
-  std::unique_ptr<roll_cpp_worker_base> worker;
+  std::unique_ptr<roll_cpp_worker> worker;
 
   /* compute values */
   for(unsigned int i = 0L; i < n; i = idxs.end()){
+    const std::size_t old_start = idxs.start(), old_end = idxs.end();
+    if(!is_first)
+      idxs.move(do_downdates);
+    const std::size_t sample_size = idxs.end() - idxs.start();
+    if(sample_size < p)
+      throw std::invalid_argument("window has " + std::to_string(sample_size) +
+                                  " rows for " + std::to_string(p) + " coefficients");
+
     if(is_first){ // setup worker
       if(use_grp){
         /* need to find `this_grp_start` */
@@ -606,11 +374,10 @@ Rcpp::List roll_cpp(
 
       } else
         this_grp_start = idxs.end() - 1L;
-      sample_size = idxs.end() - idxs.start();
 
       is_first = false;
 
-      worker.reset(new roll_cpp_worker_linpack(
+      worker.reset(new roll_cpp_worker(
           X, Y, idxs.start(), idxs.end()));
 
       if(do_compute_R_sqs)
@@ -618,20 +385,17 @@ Rcpp::List roll_cpp(
           update_sse(Y[t], ss_tot, t, y_bar);
 
     } else {
-      /* find data start and end for both new and old data */
-      auto old = idxs.move(do_downdates);
-      this_grp_start = old.end;
-      sample_size = idxs.end() - idxs.start();
+      this_grp_start = old_end;
 
       /* updates */
-      worker->update(old.end, idxs.end());
-      for(unsigned int k = old.end; k < idxs.end() and do_compute_R_sqs;
+      worker->update(old_end, idxs.end());
+      for(unsigned int k = old_end; k < idxs.end() and do_compute_R_sqs;
           ++k)
         update_sse(Y[k], ss_tot, t, y_bar);
 
       /* downdates */
       if(do_downdates){
-        delete_start = old.start.idx;
+        delete_start = old_start;
         delete_end = idxs.start();
 
         if(delete_start < delete_end)
@@ -661,7 +425,8 @@ Rcpp::List roll_cpp(
       double ss_reg = worker->get_ss(idxs.start(), idxs.end());
 
       if(do_compute_sigmas){
-        const double new_sigma = std::sqrt(ss_reg / (sample_size - p));
+        const double new_sigma = sample_size == p ? R_NaN :
+          std::sqrt(ss_reg / (sample_size - p));
         for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
           sigmas[k] = new_sigma;
       }

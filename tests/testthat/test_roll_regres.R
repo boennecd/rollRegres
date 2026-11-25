@@ -16,7 +16,7 @@ X <- structure(c(
   0.443, 0.503, 0.54, -1.559, -1.086, -0.795, -0.242, -0.44, -2.424,
   -1.485, -1.345, 0.855, 0.084, 1.784, 1.46, 0.207, -0.974, -0.877,
   -0.588, 0.551, 1.332, 0.641, 0.434, -0.349, -1.097, -1.832),
-  .Dim = c(25L, 3L), .Dimnames = list(c(
+  dim = c(25L, 3L), dimnames = list(c(
     "I1", "I2", "I3", "I4", "I5", "I6", "I7",
     "I8", "I9", "I10", "I11", "I12", "I13", "I14", "I15", "I16",
     "I17", "I18", "I19", "I20", "I21", "I22", "I23", "I24", "I25"),
@@ -190,4 +190,69 @@ test_that("Bug found doing development is fixed", {
   expect_equal(out$coefs, out_R$coef)
   expect_equal(out$sigmas, out_R$sigmas)
   expect_equal(out$r.squareds, out_R$r.squared)
+})
+
+test_that(desc = "rolling exact fits retain their coefficients and residual norms", code = {
+  x <- matrix(data = 1, nrow = 30L, ncol = 1L)
+  for (level in c(0, 1)) {
+    y <- rep(x = level, times = 30L)
+    fit <- roll_regres.fit(x = x, y = y, width = 5L, do_compute = "sigmas")
+    expect_equal(object = as.numeric(x = fit$coefs[5:30]),
+                 expected = y[5:30], tolerance = 1e-12)
+    expect_equal(object = fit$sigmas[5:30],
+                 expected = numeric(length = 26L), tolerance = 1e-12)
+  }
+})
+
+test_that(desc = "nearly collinear windows agree with fresh QR fits", code = {
+  i <- seq_len(length.out = 96L)
+  a <- sin(x = i)
+  x <- cbind(1, a, a + 1e-5 * cos(x = 2 * i))
+  y <- 1 + 2 * a - 1e-5 * cos(x = 2 * i) + 1e-5 * sin(x = 3 * i)
+  width <- 32L
+  ends <- width:length(x = i)
+  actual <- roll_regres.fit(x = x, y = y, width = width, do_compute = "sigmas")
+  reference <- vapply(X = ends, FUN = function(end) {
+    rows <- (end - width + 1L):end
+    fit <- stats::lm.fit(x = x[rows, ], y = y[rows])
+    stopifnot(fit$rank == ncol(x = x))
+    c(fit$coefficients, sqrt(x = sum(fit$residuals^2) / (width - fit$rank)))
+  }, FUN.VALUE = numeric(length = 4L))
+  # The predictor perturbation amplifies rounding by about 1e5.
+  # Allow for both the condition number and the subsequent window updates.
+  for (windows in list(first = 1L, rolling = seq_along(along.with = ends)[-1L])) {
+    coefficients <- t(x = reference[1:3, windows, drop = FALSE])
+    coef_error <- abs(x = actual$coefs[ends[windows], , drop = FALSE] - coefficients)
+    sigma_error <- abs(x = actual$sigmas[ends[windows]] / reference[4L, windows] - 1)
+    expect_lt(object = max(coef_error), expected = 1e-8)
+    expect_lt(object = max(sigma_error), expected = 1e-8)
+  }
+})
+
+test_that(desc = "fitted windows need at least one row per coefficient", code = {
+  i <- seq_len(length.out = 5L)
+  x <- cbind(1, i, i^2)
+  y <- 2 + i - i^2
+  fit <- function(groups, rolling) {
+    roll_regres.fit(x = x, y = y, width = 1L, grp = groups, min_obs = 1L,
+                    do_downdates = rolling, do_compute = "sigmas")
+  }
+  expect_error(object = fit(groups = c(1L, 1L, 2L, 2L, 2L), rolling = FALSE),
+               regexp = "window has 2 rows for 3 coefficients")
+  groups <- c(1L, 1L, 1L, 2L, 2L)
+  expect_error(object = fit(groups = groups, rolling = TRUE),
+               regexp = "window has 2 rows for 3 coefficients")
+  result <- suppressWarnings(expr = fit(groups = groups, rolling = FALSE))
+  expect_equal(object = unname(obj = result$coefs[3L, ]), expected = c(2, 1, -1))
+  expect_true(object = is.nan(x = result$sigmas[3L]))
+})
+
+test_that(desc = "the formula interface accepts full-rank square windows", code = {
+  data <- data.frame(x = 1:5, y = c(4, 6, 8, 10, 12))
+  result <- expect_warning(object = roll_regres(
+    formula = y ~ x, data = data, width = 2L, min_obs = 2L,
+    do_compute = "sigmas"), regexp = "low sample size")
+  expect_equal(object = unname(obj = result$coefs[2:5, ]),
+               expected = matrix(data = 2, nrow = 4L, ncol = 2L))
+  expect_true(object = all(is.nan(x = result$sigmas[2:5])))
 })

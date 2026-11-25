@@ -4,19 +4,26 @@
 \alias{roll_regres}
 \title{Fitting Rolling and Expanding Linear Models}
 \usage{
-roll_regres(formula, data, width, contrasts = NULL,
-  do_compute = character(), grp = NULL, do_downdates = TRUE,
-  min_obs = NULL)
+roll_regres(
+  formula,
+  data,
+  width,
+  contrasts = NULL,
+  do_compute = character(),
+  grp = NULL,
+  do_downdates = TRUE,
+  min_obs = NULL
+)
 }
 \arguments{
-\item{formula}{as \code{formula} in \code{\link{lm}}.}
+\item{formula}{as \code{formula} in \code{\link[stats]{lm}}.}
 
 \item{data}{an optional \code{data.frame} containing the variables in the model.}
 
 \item{width}{integer with the width of the moving window. Only used if
 \code{do_downdates == TRUE}.}
 
-\item{contrasts}{list passed to \code{\link{model.matrix.default}}s
+\item{contrasts}{list passed to \code{\link[stats:model.matrix]{model.matrix.default}}s
 \code{contrasts.arg} argument.}
 
 \item{do_compute}{character vector with elements \code{"sigmas"},
@@ -79,5 +86,5 @@ lapply(out, tail)
 }
 \seealso{
 \code{\link{roll_regres.fit}} for method that avoids the call to
-e.g., \code{\link{model.frame}}.
+e.g., \code{\link[stats]{model.frame}}.
 }

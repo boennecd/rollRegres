@@ -178,6 +178,8 @@ c
                rho(j) = -1.0d0
             go to 90
    80       continue
+c              A zero residual leaves the norm unchanged.
+               if (azeta .eq. 0.0d0) go to 90
                rho(j) = rho(j)*dsqrt(1.0d0-(azeta/rho(j))**2)
    90       continue
   100    continue
