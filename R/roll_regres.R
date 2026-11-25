@@ -319,7 +319,7 @@ roll_regres.fit <- function(
   if(!is.null(out$vcov))
     dimnames(out$vcov) <- .dimnames[c(2L, 2L, 1L)]
 
-  class(out) <- "roll_regres"
+  class(out) <- c("roll_regres", "list")
   out
 }
 

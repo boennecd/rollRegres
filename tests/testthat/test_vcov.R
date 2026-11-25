@@ -70,6 +70,11 @@ test_that(desc = "covariance is optional and retains singleton dimensions", code
   expect_identical(object = coef(object = fit), expected = fit$coefs)
   expect_error(object = vcov(object = fit), regexp = 'do_compute = "vcov"')
 
+  fit <- roll_regres(formula = y ~ 1, data = data, width = 3L,
+                     do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
+  expect_identical(object = as.data.frame(x = fit),
+                   expected = as.data.frame(x = unclass(x = fit)))
+
   fit <- roll_regres(formula = y ~ 1, data = data, width = 3L, do_compute = "vcov")
   expect_identical(object = dim(x = vcov(object = fit)), expected = c(1L, 1L, 4L))
   expect_identical(object = dim(x = vcov(object = fit, se = TRUE)), expected = c(4L, 1L))
@@ -84,4 +89,22 @@ test_that(desc = "windows without residual degrees of freedom have undefined cov
                                             min_obs = 2L, do_compute = "vcov"))
   expect_true(object = all(is.nan(x = vcov(object = fit)[, , 2:3])))
   expect_true(object = all(is.nan(x = vcov(object = fit, se = TRUE)[2:3, ])))
+})
+
+test_that(desc = "covariance recovers when a large residual leaves the window", code = {
+  i <- seq_len(length.out = 20L)
+  x <- 2 + sin(x = i) + i / 10
+  data <- data.frame(x = x, y = 1 + 2 * x + cos(x = 2 * i))
+  data$y[1L] <- 1e6
+  width <- 8L
+  fit <- roll_regres(formula = y ~ x, data = data, width = width,
+                     do_compute = "vcov")
+  covariance <- vcov(object = fit)
+
+  for (end in (width + 1L):length(x = i)) {
+    reference <- stats::lm(formula = y ~ x, data = data[(end - width + 1L):end, ])
+    # The large response can amplify rounding in the rolling QR update.
+    expect_equal(object = covariance[, , end], expected = stats::vcov(object = reference),
+                 tolerance = 1e-8)
+  }
 })

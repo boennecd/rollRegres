@@ -208,6 +208,7 @@ class roll_cpp_worker {
 
   /* square root of sum of squared errors */
   double ss_sqrt = 0.;
+  double ss_sqrt_scale = 0.; // largest norm since the last recomputation
 
   void check_start_end
   (const std::size_t start, const std::size_t end)
@@ -237,6 +238,7 @@ public:
     }
     if(rows > p)
       ss_sqrt = arma::norm(qty.tail(rows - p), 2);
+    ss_sqrt_scale = ss_sqrt;
   }
 
   void update
@@ -252,6 +254,7 @@ public:
       F77_CALL(dchud)(
           R.get(), &p, &p, X_t_p,
           z.get(), &p, &i_one, y_p, &ss_sqrt, &c[0], &s[0]);
+    ss_sqrt_scale = std::max(ss_sqrt_scale, ss_sqrt);
   }
 
   void downdate
@@ -315,11 +318,14 @@ public:
   }
 
   double get_ss(const std::size_t start, const std::size_t end) {
-    // R and z remain valid when roundoff prevents a residual norm downdate.
-    if(ss_sqrt < 0.){
+    // A large decrease can amplify roundoff in the sum of squares, even
+    // when the downdate succeeds. A negative norm also requests a recompute.
+    constexpr double norm_drop_factor = 64.;
+    if(ss_sqrt < ss_sqrt_scale / norm_drop_factor){
       ss_sqrt = 0.;
       for(std::size_t i = start; i < end; ++i)
         ss_sqrt = std::hypot(ss_sqrt, Y[i] - predict(i));
+      ss_sqrt_scale = ss_sqrt;
     }
     return ss_sqrt * ss_sqrt;
   }
