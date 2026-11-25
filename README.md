@@ -1,7 +1,7 @@
 # rollRegres
-[![R-CMD-check](https://github.com/boennecd/rollRegres/workflows/R-CMD-check/badge.svg)](https://github.com/boennecd/rollRegres/actions) 
-[![](https://www.r-pkg.org/badges/version/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
-[![CRAN RStudio mirror downloads](http://cranlogs.r-pkg.org/badges/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
+[![R-CMD-check](https://github.com/boennecd/rollRegres/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/boennecd/rollRegres/actions/workflows/R-CMD-check.yaml)
+[![CRAN version](https://www.r-pkg.org/badges/version/rollRegres)](https://CRAN.R-project.org/package=rollRegres)
+[![CRAN downloads](https://cranlogs.r-pkg.org/badges/last-month/rollRegres)](https://cranlogs.r-pkg.org/)
 
 This package contains functions for fast rolling and expanding linear 
 regression models. You can install the package from CRAN by calling
