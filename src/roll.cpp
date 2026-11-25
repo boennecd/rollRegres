@@ -219,12 +219,8 @@ class roll_cpp_worker {
 #endif
   }
 
-public:
-  roll_cpp_worker
-  (const arma::mat &X, const arma::vec &Y , const std::size_t start,
-   const std::size_t end):
-  X_T(X.t()), Y(Y), n(X.n_rows), p(X.n_cols)
-  {
+  void factor_window(const arma::mat &X, const std::size_t start,
+                     const std::size_t end) {
     check_start_end(start, end);
     arma::mat qr = X.rows(start, end - 1);
     arma::vec qty = Y.subvec(start, end - 1);
@@ -236,9 +232,17 @@ public:
                     R.get() + static_cast<std::size_t>(j) * p);
       std::copy_n(qty.memptr(), p, z.get());
     }
-    if(rows > p)
-      ss_sqrt = arma::norm(qty.tail(rows - p), 2);
+    ss_sqrt = rows > p ? arma::norm(qty.tail(rows - p), 2) : 0.;
     ss_sqrt_scale = ss_sqrt;
+  }
+
+public:
+  roll_cpp_worker
+  (const arma::mat &X, const arma::vec &Y , const std::size_t start,
+   const std::size_t end):
+  X_T(X.t()), Y(Y), n(X.n_rows), p(X.n_cols)
+  {
+    factor_window(X, start, end);
   }
 
   void update
@@ -275,8 +279,8 @@ public:
       // With info = -1, R still describes the window before the row removal.
       // With info = 1, dchdd updated R and z, so we can compute the coefficients.
       // Roundoff can prevent the residual norm downdate near an exact fit.
-      // dchdd then sets ss_sqrt to -1. If needed, get_ss() recomputes the
-      // norm from the residuals of the current window.
+      // dchdd then sets ss_sqrt to -1, which requests a fresh factorization
+      // if the caller needs the residual norm.
       if(info < 0)
         throw std::runtime_error(
             "'dchdd' failed with code " + std::to_string(info));
@@ -317,16 +321,17 @@ public:
       }
   }
 
-  double get_ss(const std::size_t start, const std::size_t end) {
+  void recover_residual_norm(const arma::mat &X, const std::size_t start,
+                             const std::size_t end) {
     // A large decrease can amplify roundoff in the sum of squares, even
-    // when the downdate succeeds. A negative norm also requests a recompute.
+    // when the downdate succeeds. Rebuild R and z as well as the norm so
+    // later updates use the recovered fit.
     constexpr double norm_drop_factor = 64.;
-    if(ss_sqrt < ss_sqrt_scale / norm_drop_factor){
-      ss_sqrt = 0.;
-      for(std::size_t i = start; i < end; ++i)
-        ss_sqrt = std::hypot(ss_sqrt, Y[i] - predict(i));
-      ss_sqrt_scale = ss_sqrt;
-    }
+    if(ss_sqrt < ss_sqrt_scale / norm_drop_factor)
+      factor_window(X, start, end);
+  }
+
+  double get_ss() const {
     return ss_sqrt * ss_sqrt;
   }
 
@@ -352,6 +357,7 @@ Rcpp::List roll_cpp(
     const bool use_min_obs = false, const int min_obs = 0L,
     const bool do_compute_vcov = false){
   const std::size_t n = X.n_rows, p = X.n_cols, too_low = p * 2L;
+  const bool compute_residual_norm = do_compute_R_sqs or do_compute_sigmas or do_compute_vcov;
 
   /* initalize output */
   auto set_num_vec = [&](const bool not_empty){
@@ -450,6 +456,9 @@ Rcpp::List roll_cpp(
     if(!do_warn and sample_size < too_low)
       do_warn = true;
 
+    if(compute_residual_norm)
+      worker->recover_residual_norm(X, idxs.start(), idxs.end());
+
     const std::size_t coef_start = this_grp_start * p;
     worker->set_coef(out.begin() + coef_start);
 
@@ -461,8 +470,8 @@ Rcpp::List roll_cpp(
     }
 
     /* compute other values if requested */
-    if(do_compute_R_sqs or do_compute_sigmas or do_compute_vcov){
-      const double ss_reg = worker->get_ss(idxs.start(), idxs.end());
+    if(compute_residual_norm){
+      const double ss_reg = worker->get_ss();
 
       if(do_compute_sigmas or do_compute_vcov){
         const double sigma_squared = sample_size == p ? R_NaN :

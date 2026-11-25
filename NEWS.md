@@ -4,8 +4,8 @@
   rolling and expanding windows. Use `vcov(fit)` to get the covariance array
   or `vcov(fit, se = TRUE)` to get the standard errors.
 * Use `coef(fit)` to get the coefficient matrix from either fit interface.
-* The fitter recomputes the residual norm when it drops sharply. This reduces
-  roundoff error when a large residual leaves a moving window.
+* When the residual norm drops sharply, the fitter recomputes the QR
+  decomposition to reduce roundoff from a large residual leaving the window.
 
 # rollRegres 0.1.5
 

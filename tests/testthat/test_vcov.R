@@ -95,7 +95,7 @@ test_that(desc = "covariance recovers when a large residual leaves the window", 
   i <- seq_len(length.out = 20L)
   x <- 2 + sin(x = i) + i / 10
   data <- data.frame(x = x, y = 1 + 2 * x + cos(x = 2 * i))
-  data$y[1L] <- 1e6
+  data$y[1L] <- 1e12
   width <- 8L
   fit <- roll_regres(formula = y ~ x, data = data, width = width,
                      do_compute = "vcov")
@@ -103,8 +103,7 @@ test_that(desc = "covariance recovers when a large residual leaves the window", 
 
   for (end in (width + 1L):length(x = i)) {
     reference <- stats::lm(formula = y ~ x, data = data[(end - width + 1L):end, ])
-    # The large response can amplify rounding in the rolling QR update.
     expect_equal(object = covariance[, , end], expected = stats::vcov(object = reference),
-                 tolerance = 1e-8)
+                 tolerance = 1e-12)
   }
 })
