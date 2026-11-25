@@ -2,6 +2,8 @@
 % Please edit documentation in R/roll_regres.R
 \name{roll_regres}
 \alias{roll_regres}
+\alias{coef.roll_regres}
+\alias{vcov.roll_regres}
 \title{Fitting Rolling and Expanding Linear Models}
 \usage{
 roll_regres(
@@ -14,6 +16,10 @@ roll_regres(
   do_downdates = TRUE,
   min_obs = NULL
 )
+
+\method{coef}{roll_regres}(object, ...)
+
+\method{vcov}{roll_regres}(object, se = FALSE, ...)
 }
 \arguments{
 \item{formula}{as \code{formula} in \code{\link[stats]{lm}}.}
@@ -26,9 +32,8 @@ roll_regres(
 \item{contrasts}{list passed to \code{\link[stats:model.matrix]{model.matrix.default}}s
 \code{contrasts.arg} argument.}
 
-\item{do_compute}{character vector with elements \code{"sigmas"},
-\code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
-to be computed. See "Details" in \code{\link{roll_regres}}.}
+\item{do_compute}{character vector of optional outputs. See Details in
+\code{\link{roll_regres}} for the supported values.}
 
 \item{grp}{integer vector to be used if you e.g., want to run the regression
 over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
@@ -39,10 +44,26 @@ window regressions. Otherwise, an expanding window is used.}
 \item{min_obs}{positive integer with minimum number of observation that are
 required in a window. Useful if there are gaps in \code{grp} or unequal
 number of observations for each \code{grp}.}
+
+\item{object}{a fit from \code{roll_regres()} or \code{roll_regres.fit()}.}
+
+\item{...}{additional arguments. These methods ignore them.}
+
+\item{se}{logical. If \code{TRUE}, return standard errors.}
 }
 \value{
-List with vector and matrices with the computed output. See the
-\code{do_compute} argument.
+An object of class \code{roll_regres}. This is a list with a coefficient
+matrix in \code{coefs} and fields for the optional outputs.
+\code{coef()} returns the coefficient matrix.
+When \code{do_compute} includes \code{"vcov"}, \code{vcov()} returns the
+\code{vcov} field, an array with dimensions \code{p * p * n}.
+Here, \code{p} is the number of coefficients and \code{n} is the number of
+input rows. Slice \code{[, , i]} corresponds to coefficient row \code{i}.
+With \code{se = TRUE}, \code{vcov()} returns an \code{n * p} matrix of
+standard errors with the same dimnames as the coefficient matrix.
+\code{vcov()} requires a fit computed with \code{do_compute = "vcov"}.
+Covariance entries are \code{NA} for rows without a fit and \code{NaN} for
+fitted windows with zero residual degrees of freedom.
 }
 \description{
 Method for fast rolling and expanding regression models. I.e.,
@@ -50,10 +71,13 @@ linear models estimated over a moving window or expanding window of data.
 The function assumes that data is ordered.
 }
 \details{
-\code{do_compute} can contain \code{"sigmas"} if you want the estimated
-standard deviation of the residuals, \code{"r.squareds"} for the \eqn{R^2}
-of the models, and \code{"1_step_forecasts"} for the out-of-sample forecast
-for the next periods value.
+\code{do_compute} can include any of the following values.
+\describe{
+  \item{\code{"sigmas"}}{Residual standard deviations.}
+  \item{\code{"r.squareds"}}{\eqn{R^2} values.}
+  \item{\code{"1_step_forecasts"}}{Out-of-sample forecasts for the next period.}
+  \item{\code{"vcov"}}{Coefficient covariance matrices.}
+}
 
 \code{grp} is a sorted integer vector if you want to make "block" updates.
 E.g., \code{grp} could be an integer vector with the week number. The
@@ -73,15 +97,21 @@ X <- cbind(1, matrix(rnorm(p * n), ncol = p))
 y <- drop(X \%*\% c(1, -1, 1)) + rnorm(n)
 df <- data.frame(y, X[, -1])
 
-# compute coefs
-out <- roll_regres(y ~ X1 + X2, df, width = 45L)
-tail(out$coefs)
+# compute coefficients
+out <- roll_regres(formula = y ~ X1 + X2, data = df, width = 45L)
+tail(x = coef(object = out))
 
 # compute more output
 out <- roll_regres(
  y ~ X1 + X2, df, width = 45L,
  do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
 lapply(out, tail)
+
+# compute coefficient covariance and standard errors
+out <- roll_regres(formula = y ~ X1 + X2, data = df, width = 45L,
+                   do_compute = "vcov")
+vcov(object = out)[, , n]
+tail(x = vcov(object = out, se = TRUE))
 
 }
 \seealso{

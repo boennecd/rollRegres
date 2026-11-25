@@ -1,3 +1,10 @@
+# rollRegres 0.1.6
+
+* Use `do_compute = "vcov"` to compute coefficient covariance matrices for
+  rolling and expanding windows. Use `vcov(fit)` to get the covariance array
+  or `vcov(fit, se = TRUE)` to get the standard errors.
+* Use `coef(fit)` to get the coefficient matrix from either fit interface.
+
 # rollRegres 0.1.5
 
 * The package includes the R BLAS header directly. This fixes compilation on

@@ -1,6 +1,8 @@
 #include "R_ext/RS.h" /* for e.g., `F77_CALL` macro */
 #include "arma.h"
 #include "BLAS_LINPACK.h"
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <cstring>
 #include <sstream>
@@ -290,6 +292,28 @@ public:
       out, &p);
   }
 
+  void set_covariance(double *out, const double sigma_squared) const {
+    const std::size_t size = static_cast<std::size_t>(p) * p;
+    if(std::isnan(sigma_squared)){
+      std::fill_n(out, size, R_NaN);
+      return;
+    }
+
+    // DPOTRI overwrites the factor. Keep R for later window updates.
+    std::copy_n(R.get(), size, out);
+    const int info = invert_crossproduct(out, p);
+    if(info != 0)
+      throw std::runtime_error("'dpotri' failed with code " + std::to_string(info));
+
+    // Scale the upper triangle and copy it to the lower triangle.
+    for(std::size_t col = 0; col < static_cast<std::size_t>(p); ++col)
+      for(std::size_t row = 0; row <= col; ++row){
+        const double value = sigma_squared * out[row + col * p];
+        out[row + col * p] = value;
+        out[col + row * p] = value;
+      }
+  }
+
   double get_ss(const std::size_t start, const std::size_t end) {
     // R and z remain valid when roundoff prevents a residual norm downdate.
     if(ss_sqrt < 0.){
@@ -319,7 +343,8 @@ Rcpp::List roll_cpp(
     const bool do_compute_R_sqs,
     const bool do_compute_sigmas, const bool do_1_step_forecasts,
     arma::ivec grp, const bool use_grp, const bool do_downdates,
-    const bool use_min_obs = false, const int min_obs = 0L){
+    const bool use_min_obs = false, const int min_obs = 0L,
+    const bool do_compute_vcov = false){
   const std::size_t n = X.n_rows, p = X.n_cols, too_low = p * 2L;
 
   /* initalize output */
@@ -337,6 +362,15 @@ Rcpp::List roll_cpp(
     R_sqs              = set_num_vec(do_compute_R_sqs),
     sigmas             = set_num_vec(do_compute_sigmas),
     one_step_forecasts = set_num_vec(do_1_step_forecasts);
+
+  Rcpp::NumericVector covariances;
+  const std::size_t covariance_size = do_compute_vcov ? p * p : 0;
+  if(do_compute_vcov){
+    if(p > 0 && n > 0 && p > static_cast<std::size_t>(R_XLEN_T_MAX) / p / n)
+      Rcpp::stop("The covariance array is too large.");
+    covariances = Rcpp::NumericVector(covariance_size * n, NA_REAL);
+    covariances.attr("dim") = Rcpp::IntegerVector::create(p, p, n);
+  }
 
   /* define intermediates */
   bool is_first = true, do_warn = false;
@@ -410,7 +444,7 @@ Rcpp::List roll_cpp(
     if(!do_warn and sample_size < too_low)
       do_warn = true;
 
-    int coef_start = this_grp_start * p;
+    const std::size_t coef_start = this_grp_start * p;
     worker->set_coef(out.begin() + coef_start);
 
     /* copy values */
@@ -421,14 +455,25 @@ Rcpp::List roll_cpp(
     }
 
     /* compute other values if requested */
-    if(do_compute_R_sqs or do_compute_sigmas){
-      double ss_reg = worker->get_ss(idxs.start(), idxs.end());
+    if(do_compute_R_sqs or do_compute_sigmas or do_compute_vcov){
+      const double ss_reg = worker->get_ss(idxs.start(), idxs.end());
 
-      if(do_compute_sigmas){
-        const double new_sigma = sample_size == p ? R_NaN :
-          std::sqrt(ss_reg / (sample_size - p));
-        for(unsigned int k = this_grp_start; k < idxs.end(); ++k)
-          sigmas[k] = new_sigma;
+      if(do_compute_sigmas or do_compute_vcov){
+        const double sigma_squared = sample_size == p ? R_NaN :
+          ss_reg / (sample_size - p);
+        if(do_compute_sigmas){
+          const double new_sigma = std::sqrt(sigma_squared);
+          for(std::size_t k = this_grp_start; k < idxs.end(); ++k)
+            sigmas[k] = new_sigma;
+        }
+
+        if(do_compute_vcov and p > 0){
+          double *first_slice = covariances.begin() + this_grp_start * covariance_size;
+          worker->set_covariance(first_slice, sigma_squared);
+          for(std::size_t k = this_grp_start + 1; k < idxs.end(); ++k)
+            std::copy_n(first_slice, covariance_size,
+                        covariances.begin() + k * covariance_size);
+        }
       }
 
       if(do_compute_R_sqs){
@@ -470,6 +515,9 @@ Rcpp::List roll_cpp(
     out_list["one_step_forecasts"] = std::move(one_step_forecasts);
   else
     out_list["one_step_forecasts"] = R_NilValue;
+
+  if(do_compute_vcov)
+    out_list["vcov"] = std::move(covariances);
 
   return out_list;
 }

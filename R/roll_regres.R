@@ -9,9 +9,8 @@
 #' \code{contrasts.arg} argument.
 #' @param width integer with the width of the moving window. Only used if
 #' \code{do_downdates == TRUE}.
-#' @param do_compute character vector with elements \code{"sigmas"},
-#' \code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
-#' to be computed. See "Details" in \code{\link{roll_regres}}.
+#' @param do_compute character vector of optional outputs. See Details in
+#' \code{\link{roll_regres}} for the supported values.
 #' @param grp integer vector to be used if you e.g., want to run the regression
 #' over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.
 #' @param do_downdates logical which is \code{TRUE} if you want a rolling
@@ -21,10 +20,13 @@
 #' number of observations for each \code{grp}.
 #'
 #' @details
-#' \code{do_compute} can contain \code{"sigmas"} if you want the estimated
-#' standard deviation of the residuals, \code{"r.squareds"} for the \eqn{R^2}
-#' of the models, and \code{"1_step_forecasts"} for the out-of-sample forecast
-#' for the next periods value.
+#' \code{do_compute} can include any of the following values.
+#' \describe{
+#'   \item{\code{"sigmas"}}{Residual standard deviations.}
+#'   \item{\code{"r.squareds"}}{\eqn{R^2} values.}
+#'   \item{\code{"1_step_forecasts"}}{Out-of-sample forecasts for the next period.}
+#'   \item{\code{"vcov"}}{Coefficient covariance matrices.}
+#' }
 #'
 #' \code{grp} is a sorted integer vector if you want to make "block" updates.
 #' E.g., \code{grp} could be an integer vector with the week number. The
@@ -36,8 +38,18 @@
 #' examples.
 #'
 #' @return
-#' List with vector and matrices with the computed output. See the
-#' \code{do_compute} argument.
+#' An object of class \code{roll_regres}. This is a list with a coefficient
+#' matrix in \code{coefs} and fields for the optional outputs.
+#' \code{coef()} returns the coefficient matrix.
+#' When \code{do_compute} includes \code{"vcov"}, \code{vcov()} returns the
+#' \code{vcov} field, an array with dimensions \code{p * p * n}.
+#' Here, \code{p} is the number of coefficients and \code{n} is the number of
+#' input rows. Slice \code{[, , i]} corresponds to coefficient row \code{i}.
+#' With \code{se = TRUE}, \code{vcov()} returns an \code{n * p} matrix of
+#' standard errors with the same dimnames as the coefficient matrix.
+#' \code{vcov()} requires a fit computed with \code{do_compute = "vcov"}.
+#' Covariance entries are \code{NA} for rows without a fit and \code{NaN} for
+#' fitted windows with zero residual degrees of freedom.
 #'
 #' @seealso \code{\link{roll_regres.fit}} for method that avoids the call to
 #' e.g., \code{\link[stats]{model.frame}}.
@@ -53,15 +65,21 @@
 #' y <- drop(X %*% c(1, -1, 1)) + rnorm(n)
 #' df <- data.frame(y, X[, -1])
 #'
-#' # compute coefs
-#' out <- roll_regres(y ~ X1 + X2, df, width = 45L)
-#' tail(out$coefs)
+#' # compute coefficients
+#' out <- roll_regres(formula = y ~ X1 + X2, data = df, width = 45L)
+#' tail(x = coef(object = out))
 #'
 #' # compute more output
 #' out <- roll_regres(
 #'  y ~ X1 + X2, df, width = 45L,
 #'  do_compute = c("sigmas", "r.squareds", "1_step_forecasts"))
 #' lapply(out, tail)
+#'
+#' # compute coefficient covariance and standard errors
+#' out <- roll_regres(formula = y ~ X1 + X2, data = df, width = 45L,
+#'                    do_compute = "vcov")
+#' vcov(object = out)[, , n]
+#' tail(x = vcov(object = out, se = TRUE))
 #'
 #' @importFrom stats model.frame na.fail
 #' @export
@@ -105,7 +123,8 @@ roll_regres <- function(
 #' windows, it uses \code{dchud} to add rows and \code{dchdd} to remove rows.
 #' The fitter assumes that the design matrix has full column rank in each window.
 #' It raises an error if a fitted window has fewer rows than coefficients.
-#' With equal counts, the residual standard deviation is undefined (\code{NaN}).
+#' With equal counts, the residual standard deviation and coefficient
+#' covariance matrix are undefined (\code{NaN}).
 #'
 #' @references
 #' Golub, G. H., & Van Loan, C. F. (2013). Matrix computations (4rd ed.).
@@ -143,7 +162,7 @@ roll_regres.fit <- function(
     assert_int(width, upper = nrow(x)) else
       assert_int(width, lower = max(1L, ncol(x = x)), upper = nrow(x))
   assert_character(do_compute, any.missing = FALSE)
-  if(!all(do_compute %in% c("sigmas", "r.squareds", "1_step_forecasts")))
+  if(!all(do_compute %in% c("sigmas", "r.squareds", "1_step_forecasts", "vcov")))
     stop(sQuote(do_compute), " contains elements which are not implemented")
 
   if(is.null(grp)){
@@ -176,7 +195,8 @@ roll_regres.fit <- function(
     use_grp = use_grp, do_downdates = do_downdates,
     do_compute_sigmas   = do_compute_sigmas,
     do_compute_R_sqs    = do_compute_R_sqs,
-    do_1_step_forecasts = do_1_step_forecasts)
+    do_1_step_forecasts = do_1_step_forecasts,
+    do_compute_vcov     = "vcov" %in% do_compute)
   cl <- as.call(cl)
 
   #####
@@ -230,7 +250,9 @@ roll_regres.fit <- function(
               all(keep[seq_len(sum(!keep))] == FALSE))
     keep[seq_len(nrow(o$coefs) - length(idx_out))] <- FALSE
     o$coefs <- o$coefs[keep, , drop = FALSE]
-    other <- names(o) != "coefs"
+    if(!is.null(o$vcov))
+      o$vcov <- o$vcov[, , keep, drop = FALSE]
+    other <- !names(x = o) %in% c("coefs", "vcov")
     o[other] <- lapply(o[other], "[", keep)
 
     # return with the index to insert at
@@ -244,6 +266,8 @@ roll_regres.fit <- function(
   res <- lapply(out[[1]]$out, function(x){
     if(is.matrix(x)){
       return(matrix(NA_real_, n, ncol(x)))
+    } else if(is.array(x)){
+      return(array(data = NA_real_, dim = c(dim(x = x)[1:2], n)))
     } else if(is.vector(x) && is.integer(x)){
       return(rep(NA_integer_, n))
     } else if(is.vector(x) && is.numeric(x)){
@@ -254,10 +278,13 @@ roll_regres.fit <- function(
     stop("Invalid type")
   })
 
+  scalar_outputs <- setdiff(x = names(x = res), y = c("coefs", "vcov"))
   for(z in out){
     res$coefs[z$idx, ] <- z$out$coefs
+    if(!is.null(res$vcov))
+      res$vcov[, , z$idx] <- z$out$vcov
 
-    for(i in seq_len(length(z$out) - 1L) + 1L){
+    for(i in scalar_outputs){
       if(is.null(z$out[[i]]))
         next
       res[[i]][z$idx] <- z$out[[i]]
@@ -269,14 +296,13 @@ roll_regres.fit <- function(
 
 .roll_regres.fit <- function(
   y, x, width, do_compute_sigmas, do_compute_R_sqs, do_1_step_forecasts, grp,
-  use_grp, do_downdates, min_obs = 0L, use_min_obs = FALSE){
-  out <- roll_cpp(
+  use_grp, do_downdates, do_compute_vcov, min_obs = 0L, use_min_obs = FALSE){
+  roll_cpp(
     Y = y, X = x, window = width, do_compute_R_sqs = do_compute_R_sqs,
     do_compute_sigmas = do_compute_sigmas,
     do_1_step_forecasts = do_1_step_forecasts, grp = grp, use_grp = use_grp,
-    do_downdates = do_downdates, min_obs = min_obs, use_min_obs = use_min_obs)
-
-  lapply(out, drop)
+    do_downdates = do_downdates, min_obs = min_obs, use_min_obs = use_min_obs,
+    do_compute_vcov = do_compute_vcov)
 }
 
 .set_names <- function(out, .dimnames){
@@ -290,5 +316,37 @@ roll_regres.fit <- function(
   if(!is.null(out$one_step_forecasts))
     names(out$one_step_forecasts) <- .dimnames[[1]]
 
+  if(!is.null(out$vcov))
+    dimnames(out$vcov) <- .dimnames[c(2L, 2L, 1L)]
+
+  class(out) <- "roll_regres"
   out
+}
+
+#' @rdname roll_regres
+#' @param object a fit from \code{roll_regres()} or \code{roll_regres.fit()}.
+#' @param ... additional arguments. These methods ignore them.
+#' @importFrom stats coef
+#' @export
+coef.roll_regres <- function(object, ...) {
+  object$coefs
+}
+
+#' @rdname roll_regres
+#' @param se logical. If \code{TRUE}, return standard errors.
+#' @importFrom stats vcov
+#' @export
+vcov.roll_regres <- function(object, se = FALSE, ...) {
+  covariance <- object$vcov
+  if(is.null(covariance))
+    stop('Fit the model with do_compute = "vcov" to compute covariance.', call. = FALSE)
+  if(!se)
+    return(covariance)
+
+  standard_errors <- matrix(data = NA_real_, nrow = nrow(x = object$coefs),
+                            ncol = ncol(x = object$coefs),
+                            dimnames = dimnames(x = object$coefs))
+  for(j in seq_len(length.out = ncol(x = standard_errors)))
+    standard_errors[, j] <- sqrt(x = covariance[j, j, ])
+  standard_errors
 }
