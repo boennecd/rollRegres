@@ -199,7 +199,8 @@ dim(x = covariance)
 
 The covariance array has dimensions `p × p × n`. Here, `p` is the number of
 coefficients and `n` is the number of input rows. Slice `[, , i]` corresponds
-to row `i` of `coef(fit)`. Slices before the first complete window contain `NA`.
+to row `i` of `coef(object = fit)`. Slices before the first complete window
+contain `NA`.
 
 Display the covariance matrix for the last window. Then compare it with the
 covariance matrix from `lm()` on the same rows.
@@ -215,8 +216,8 @@ all.equal(target = stats::vcov(object = reference),
           current = covariance[, , last_row])
 ```
 
-Use `vcov(fit, se = TRUE)` to get a matrix of standard errors. Its rows and
-columns match those of `coef(fit)`.
+Use `vcov(object = fit, se = TRUE)` to get a matrix of standard errors. Its
+rows and columns match those of the coefficient matrix.
 
 ```{r rolling_standard_errors}
 standard_errors <- vcov(object = fit, se = TRUE)
