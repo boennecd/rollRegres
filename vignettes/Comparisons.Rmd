@@ -182,6 +182,47 @@ stopifnot(
   isTRUE(all.equal(R_out$one_step_forecasts, pck_out$one_step_forecasts)))
 ```
 
+## Coefficient covariance and standard errors
+
+Set `do_compute = "vcov"` to compute coefficient covariance in each window.
+This example uses 12-row windows to regress tree volume on `Girth`, the trunk
+diameter recorded in `trees`.
+
+```{r rolling_covariance}
+tree_data <- datasets::trees
+window_width <- 12L
+fit <- roll_regres(formula = Volume ~ Girth, data = tree_data,
+                   width = window_width, do_compute = "vcov")
+covariance <- vcov(object = fit)
+dim(x = covariance)
+```
+
+The covariance array has dimensions `p × p × n`. Here, `p` is the number of
+coefficients and `n` is the number of input rows. Slice `[, , i]` corresponds
+to row `i` of `coef(fit)`. Slices before the first complete window contain `NA`.
+
+Display the covariance matrix for the last window. Then compare it with the
+covariance matrix from `lm()` on the same rows.
+
+```{r compare_covariance_with_lm}
+last_row <- nrow(x = tree_data)
+covariance[, , last_row]
+
+last_window <- seq.int(from = last_row - window_width + 1L, to = last_row)
+reference <- stats::lm(formula = Volume ~ Girth,
+                       data = tree_data[last_window, , drop = FALSE])
+all.equal(target = stats::vcov(object = reference),
+          current = covariance[, , last_row])
+```
+
+Use `vcov(fit, se = TRUE)` to get a matrix of standard errors. Its rows and
+columns match those of `coef(fit)`.
+
+```{r rolling_standard_errors}
+standard_errors <- vcov(object = fit, se = TRUE)
+tail(x = standard_errors)
+```
+
 ## Update in blocks
 You can use the `grp` argument to make updates in blocks. E.g., here is an 
 example with weekly data
