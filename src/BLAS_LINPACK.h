@@ -8,3 +8,5 @@ void dtrsm(
 
 void factor_first_window(double *x, int rows, int cols, double *qty,
                          double *qraux);
+
+int invert_crossproduct(double *factor, int size);

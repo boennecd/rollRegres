@@ -22,9 +22,8 @@ roll_regres.fit(
 \item{width}{integer with the width of the moving window. Only used if
 \code{do_downdates == TRUE}.}
 
-\item{do_compute}{character vector with elements \code{"sigmas"},
-\code{"r.squareds"}, and/or \code{"1_step_forecasts"} for additional output
-to be computed. See "Details" in \code{\link{roll_regres}}.}
+\item{do_compute}{character vector of optional outputs. See Details in
+\code{\link{roll_regres}} for the supported values.}
 
 \item{grp}{integer vector to be used if you e.g., want to run the regression
 over weekly blocks of data. See "Details" in \code{\link{roll_regres}}.}
@@ -49,7 +48,8 @@ to apply the orthogonal transformation to the response. For subsequent
 windows, it uses \code{dchud} to add rows and \code{dchdd} to remove rows.
 The fitter assumes that the design matrix has full column rank in each window.
 It raises an error if a fitted window has fewer rows than coefficients.
-With equal counts, the residual standard deviation is undefined (\code{NaN}).
+With equal counts, the residual standard deviation and coefficient
+covariance matrix are undefined (\code{NaN}).
 }
 \examples{
 # simulate data

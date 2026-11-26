@@ -9,7 +9,8 @@ test_that("'roll_regres' gives the same", {
   df <- data.frame(y, X[, -1])
 
   expect_known_value(
-    roll_regres(y ~ X1 + X2, df, width = 45L), file = "roll_regres_man_1.RDS")
+    object = unclass(x = roll_regres(formula = y ~ X1 + X2, data = df, width = 45L)),
+    file = "roll_regres_man_1.RDS")
 
   out <- roll_regres(
     y ~ X1 + X2, df, width = 45L,
@@ -25,6 +26,6 @@ test_that("'roll_regres.fit' gives the same", {
   y <- drop(X %*% c(1, -1, 1)) + rnorm(n)
 
   expect_known_value(
-    roll_regres.fit(x = X, y = y, width = 45L),
+    object = unclass(x = roll_regres.fit(x = X, y = y, width = 45L)),
     file = "roll_regres.fit_man_1.RDS")
 })
