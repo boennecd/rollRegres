@@ -343,10 +343,10 @@ vcov.roll_regres <- function(object, se = FALSE, ...) {
   if(!se)
     return(covariance)
 
-  standard_errors <- matrix(data = NA_real_, nrow = nrow(x = object$coefs),
-                            ncol = ncol(x = object$coefs),
-                            dimnames = dimnames(x = object$coefs))
-  for(j in seq_len(length.out = ncol(x = standard_errors)))
-    standard_errors[, j] <- sqrt(x = covariance[j, j, ])
-  standard_errors
+  standard_errors <- vapply(
+    X = seq_len(length.out = ncol(x = object$coefs)),
+    FUN = function(j) sqrt(x = covariance[j, j, ]),
+    FUN.VALUE = numeric(length = nrow(x = object$coefs)))
+  structure(.Data = standard_errors, dim = dim(x = object$coefs),
+            dimnames = dimnames(x = object$coefs))
 }
